@@ -2,7 +2,7 @@
 // CFARM_Log.cpp   Implementation of class CFARMLog
 // Do NOT modify or remove this copyright and license
 //
-// Copyright (c) 2014 - 2023 Seagate Technology LLC and/or its Affiliates
+// Copyright (c) 2014 - 2026 Seagate Technology LLC and/or its Affiliates
 //
 // This software is subject to the terms of the Mozilla Public
 // License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -13,6 +13,8 @@
 // \file CFARM_Log.cpp  Implementation of class CFARMLog
 //
 #include "CFARM_Log.h"
+#include "CFARM_Combine.h"
+#include <cstring>
 
 using namespace opensea_parser;
 //-----------------------------------------------------------------------------
@@ -29,10 +31,11 @@ using namespace opensea_parser;
 //
 //---------------------------------------------------------------------------
 CFARMLog::CFARMLog()
-	:CFarm_Combine()
-	, m_FARMstatus(IN_PROGRESS)
-	, m_isCombo(false)
-    , m_bufferdelete(false)
+	:m_FARMstatus(eReturnValues::IN_PROGRESS)
+	, v_Buff()
+	, m_LogSize(0)
+	, m_showStatusBytes(false)
+	, m_showStatic(false)
 {
 
 }
@@ -51,33 +54,27 @@ CFARMLog::CFARMLog()
 //!   \return 
 //
 //---------------------------------------------------------------------------
-CFARMLog::CFARMLog(const std::string& fileName, bool showStatus)
-	:CFarm_Combine(showStatus)
-	, m_FARMstatus(IN_PROGRESS)
-	, m_isCombo(false)
-    , m_bufferdelete(true)
+CFARMLog::CFARMLog(const std::string& fileName, bool showStatus, bool showStatic)
+	: m_FARMstatus(eReturnValues::IN_PROGRESS)
+	, v_Buff()
+	, m_LogSize(0)
+	, m_showStatusBytes(showStatus)
+	, m_showStatic(showStatic)
 {
 	CLog *cCLog;
-	cCLog = new CLog(fileName);
-	if (cCLog->get_Log_Status() == SUCCESS)
+	cCLog = new CLog(fileName, true);
+	if (cCLog->get_Log_Status() == eReturnValues::SUCCESS)
 	{
-		if (cCLog->get_Buffer() != NULL)
+		m_LogSize = cCLog->get_Size();
+		cCLog->get_vBuffer(v_Buff);
+		if (v_Buff.size() != 0)                           // if the buffer is null then exit something did not go right
 		{
-			m_LogSize = cCLog->get_Size();
-			bufferData = new uint8_t[m_LogSize];								// new a buffer to the point				
-#ifndef __STDC_SECURE_LIB__
-			memcpy(bufferData, cCLog->get_Buffer(), m_LogSize);
-#else
-			memcpy_s(bufferData, m_LogSize, cCLog->get_Buffer(), m_LogSize);// copy the buffer data to the class member pBuf
-#endif
-			setCombine(bufferData, m_LogSize);
-			m_isCombo = getIsCombo();
-			m_FARMstatus = IN_PROGRESS;
+			m_FARMstatus = eReturnValues::IN_PROGRESS;
 		}
 		else
 		{
 
-			m_FARMstatus = FAILURE;
+			m_FARMstatus = eReturnValues::FAILURE;
 		}
 	}
 	else
@@ -101,31 +98,26 @@ CFARMLog::CFARMLog(const std::string& fileName, bool showStatus)
 //
 //---------------------------------------------------------------------------
 CFARMLog::CFARMLog(const std::string & fileName)
-	:CFarm_Combine()
-	, m_FARMstatus(IN_PROGRESS)
-	, m_isCombo(false)
-    , m_bufferdelete(true)
+	:m_FARMstatus(eReturnValues::IN_PROGRESS)
+	, v_Buff()
+	, m_LogSize(0)
+	, m_showStatusBytes(false)
+	, m_showStatic(false)
 {
 	CLog *cCLog;
-	cCLog = new CLog(fileName);
-	if (cCLog->get_Log_Status() == SUCCESS)
+	cCLog = new CLog(fileName, true);
+	if (cCLog->get_Log_Status() == eReturnValues::SUCCESS)
 	{
-		if (cCLog->get_Buffer() != NULL)
+        m_LogSize = cCLog->get_Size();
+		cCLog->get_vBuffer(v_Buff);
+		if (v_Buff.size() != 0)                           // if the buffer is null then exit something did not go right
 		{
-			m_LogSize = cCLog->get_Size();
-			bufferData = new uint8_t[m_LogSize];								// new a buffer to the point				
-#ifndef __STDC_SECURE_LIB__
-			memcpy(bufferData, cCLog->get_Buffer(), m_LogSize);
-#else
-			memcpy_s(bufferData, m_LogSize, cCLog->get_Buffer(), m_LogSize);// copy the buffer data to the class member pBuf
-#endif
-			m_isCombo = getIsCombo();
-			m_FARMstatus = IN_PROGRESS;
+			m_FARMstatus = eReturnValues::IN_PROGRESS;
 		}
 		else
 		{
 
-			m_FARMstatus = FAILURE;
+			m_FARMstatus = eReturnValues::FAILURE;
 		}
 	}
 	else
@@ -150,21 +142,22 @@ CFARMLog::CFARMLog(const std::string & fileName)
 //!   \return 
 //
 //---------------------------------------------------------------------------
-CFARMLog::CFARMLog(uint8_t *farmbufferData, size_t bufferSize, bool showStatus)
-	:CFarm_Combine(farmbufferData, bufferSize, showStatus)
-	, m_FARMstatus(IN_PROGRESS)
-	, m_isCombo(false)
-    , m_bufferdelete(false)
+CFARMLog::CFARMLog(uint8_t *farmbufferData, size_t bufferSize, bool showStatus, bool showStatic)
+	: m_FARMstatus(eReturnValues::IN_PROGRESS)
+	, v_Buff()
+	, m_LogSize(bufferSize)
+	, m_showStatusBytes(showStatus)
+	, m_showStatic(showStatic)
 {
-	if (farmbufferData != NULL)
+	if (farmbufferData != M_NULLPTR && m_LogSize > 0)
 	{
-		m_isCombo = getIsCombo();
-		m_FARMstatus = IN_PROGRESS;
-}
+		v_Buff.resize(m_LogSize);  // Resize vector before copying!
+		safe_memmove(v_Buff.data(), m_LogSize, farmbufferData, m_LogSize);
+		m_FARMstatus = eReturnValues::IN_PROGRESS;
+	}
 	else
 	{
-
-		m_FARMstatus = FAILURE;
+		m_FARMstatus = eReturnValues::FAILURE;
 	}
 }
 //-----------------------------------------------------------------------------
@@ -182,13 +175,7 @@ CFARMLog::CFARMLog(uint8_t *farmbufferData, size_t bufferSize, bool showStatus)
 //---------------------------------------------------------------------------
 CFARMLog::~CFARMLog()
 {
-    if (m_bufferdelete)
-    {
-        if (bufferData != NULL)
-        {
-            delete[] bufferData;
-        }
-    }
+
 }
 //-----------------------------------------------------------------------------
 //
@@ -201,59 +188,86 @@ CFARMLog::~CFARMLog()
 //! \param pData - pointer to the buffer
 //
 //  Exit:
-//!   \return SUCCESS or FAILURE
+//!   \return eReturnValues::SUCCESS or FAILURE
 //
 //---------------------------------------------------------------------------
 eReturnValues CFARMLog::parse_Device_Farm_Log(JSONNODE *masterJson)
 {
-	eReturnValues retStatus = SUCCESS; // MEMORY_FAILURE;
-    if (m_isCombo)
-    {
-		combo_Parsing( masterJson);
-		retStatus = get_Combo_Status();
-    }
-    else
-    {
-		if (get_IsScsi())
+	if (masterJson == M_NULLPTR || v_Buff.size() < 2)
+	{
+		return eReturnValues::BAD_PARAMETER;
+	}
+	CFarm_Combine combined(v_Buff.data(), v_Buff.size(), m_showStatusBytes, m_showStatic);
+	if (combined.getIsCombo())
+	{
+		return combined.combo_Parsing(masterJson);
+	}
+	if ((v_Buff.size() >= 4 && std::memcmp(v_Buff.data(), "\x3C\x48\x54\x57", 4) == 0) ||
+		(v_Buff.size() >= 20 && std::memcmp(v_Buff.data() + 16, "HLWN", 4) == 0))
+	{
+		if (v_Buff.size() > UINT32_MAX)
 		{
-			uint8_t subpage = bufferData[1];
-			CSCSI_Farm_Log* pCFarm;
-			pCFarm = new CSCSI_Farm_Log(bufferData, m_LogSize, subpage, false, get_showStatus());
-			if (pCFarm->get_Log_Status() == SUCCESS)
+			return eReturnValues::INVALID_LENGTH;
+		}
+		JSONNODE* trace = json_new(JSON_ARRAY);
+		json_set_name(trace, "FARM WorkLoad Trace Log");
+		json_push_back(masterJson, trace);
+		CFARMWLM wlm(v_Buff.data(), static_cast<uint32_t>(v_Buff.size()), trace);
+		return wlm.get_WLM_Status();
+	}
+	eReturnValues retStatus = eReturnValues::SUCCESS; 
+
+	if (is_Device_Scsi(v_Buff.at(0), v_Buff.at(1)))
+	{
+		uint8_t subpage = v_Buff.at(1);
+		CSCSI_Farm_Log* pCFarm;
+		pCFarm = new CSCSI_Farm_Log(v_Buff, m_LogSize, subpage, false, m_showStatusBytes, m_showStatic);
+		if (pCFarm->get_Log_Status() == eReturnValues::SUCCESS)
+		{
+			try
 			{
 				pCFarm->print_All_Pages(masterJson);
-				retStatus = SUCCESS;
+				retStatus = eReturnValues::SUCCESS;
 			}
-			else
+			catch (...)
 			{
-				retStatus = pCFarm->get_Log_Status();
+				delete (pCFarm);
+				return eReturnValues::MEMORY_FAILURE;
 			}
-			delete(pCFarm);
 		}
 		else
 		{
-			CATA_Farm_Log* pCFarm;
-			pCFarm = new CATA_Farm_Log(bufferData, m_LogSize, get_showStatus());
-			if (pCFarm->get_Log_Status() == IN_PROGRESS)
-			{
-				try
-				{
-					retStatus = pCFarm->parse_Farm_Log();
-					if (retStatus == IN_PROGRESS)
-					{
-						pCFarm->print_All_Pages(masterJson);
-						retStatus = SUCCESS;
-					}
-				}
-				catch (...)
-				{
-					delete (pCFarm);
-					return MEMORY_FAILURE;
-				}
-
-			}
-			delete (pCFarm);
+			retStatus = pCFarm->get_Log_Status();
 		}
-    }
+		delete(pCFarm);
+	}
+	else
+	{
+		CATA_Farm_Log* pCFarm;
+		pCFarm = new CATA_Farm_Log(v_Buff, m_showStatusBytes, m_showStatic);
+		if (pCFarm->get_Log_Status() == eReturnValues::IN_PROGRESS)
+		{
+			try
+			{
+				retStatus = pCFarm->parse_Farm_Log();
+				if (retStatus == eReturnValues::IN_PROGRESS)
+				{
+					pCFarm->print_All_Pages(masterJson);
+					retStatus = eReturnValues::SUCCESS;
+				}
+			}
+			catch (...)
+			{
+				delete (pCFarm);
+				return eReturnValues::MEMORY_FAILURE;
+			}
+
+		}
+		else
+		{
+			retStatus = pCFarm->get_Log_Status();
+		}
+		delete (pCFarm);
+	}
     return retStatus;
 }

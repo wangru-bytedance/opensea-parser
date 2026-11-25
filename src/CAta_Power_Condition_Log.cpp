@@ -2,7 +2,7 @@
 // CAta_Power_Conditions_Log.cpp   Implementation of Base class CAtaLog
 // Do NOT modify or remove this copyright and license
 //
-// Copyright (c) 2014 - 2023 Seagate Technology LLC and/or its Affiliates
+// Copyright (c) 2014 - 2026 Seagate Technology LLC and/or its Affiliates
 //
 // This software is subject to the terms of the Mozilla Public
 // License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -13,10 +13,6 @@
 // \file CAta_Power_Conditions_Log.cpp  Implementation of Base class CAta_Power_Conditions_Log
 //
 #include "CAta_Power_Conditions_Log.h"
-
-/*#if !defined BASIC
-#define	BASIC (80)
-#endif*/
 
 using namespace opensea_parser;
 #define OFFSET_IDLE_A      0
@@ -39,14 +35,14 @@ using namespace opensea_parser;
 //
 //---------------------------------------------------------------------------
 CAtaPowerConditionsLog::CAtaPowerConditionsLog()
-    : m_powerConditionLog(NULL)
-    , m_powerFlags(NULL)
+    : m_powerConditionLog()
+    , m_powerFlags(M_NULLPTR)
     , Buffer()
-    , m_status(IN_PROGRESS)
+    , m_status(eReturnValues::IN_PROGRESS)
     , m_myJSON()
-    , m_idleAPowerConditions(NULL), m_idleBPowerConditions(NULL), m_idleCPowerConditions(NULL)
-    , m_standbyYPowerConditions(NULL), m_standbyZPowerConditions(NULL)
-    , m_conditionFlags(NULL)
+    , m_idleAPowerConditions(M_NULLPTR), m_idleBPowerConditions(M_NULLPTR), m_idleCPowerConditions(M_NULLPTR)
+    , m_standbyYPowerConditions(M_NULLPTR), m_standbyZPowerConditions(M_NULLPTR)
+    , m_conditionFlags(M_NULLPTR)
     , conditionFlags()
 {
 
@@ -64,50 +60,44 @@ CAtaPowerConditionsLog::CAtaPowerConditionsLog()
 //!  \return NONE
 //
 //---------------------------------------------------------------------------
-CAtaPowerConditionsLog::CAtaPowerConditionsLog(std::string filename)
-    : m_powerConditionLog(NULL)
-    , m_powerFlags(NULL)
+CAtaPowerConditionsLog::CAtaPowerConditionsLog(std::string &filename)
+    : m_powerConditionLog()
+    , m_powerFlags(M_NULLPTR)
     , Buffer()
-    , m_status(IN_PROGRESS)
+    , m_status(eReturnValues::IN_PROGRESS)
     , m_myJSON()
-    , m_idleAPowerConditions(NULL), m_idleBPowerConditions(NULL), m_idleCPowerConditions(NULL)
-    , m_standbyYPowerConditions(NULL), m_standbyZPowerConditions(NULL)
-    , m_conditionFlags(NULL)
+    , m_idleAPowerConditions(M_NULLPTR), m_idleBPowerConditions(M_NULLPTR), m_idleCPowerConditions(M_NULLPTR)
+    , m_standbyYPowerConditions(M_NULLPTR), m_standbyZPowerConditions(M_NULLPTR)
+    , m_conditionFlags(M_NULLPTR)
     , conditionFlags()
 {
 
     CLog *cCLog;
-    cCLog = new CLog(filename);
-    if (cCLog->get_Log_Status() == SUCCESS)
+    cCLog = new CLog(filename, true);
+    if (cCLog->get_Log_Status() == eReturnValues::SUCCESS)
     {
-        if (cCLog->get_Buffer() != NULL)
+        cCLog->get_vBuffer(m_powerConditionLog);
+        if (m_powerConditionLog.size() != 0)                           // if the buffer is null then exit something did not go right
         {
-            size_t logSize = cCLog->get_Size();
-            m_powerConditionLog = new uint8_t[logSize];								// new a buffer to the point				
-#ifndef __STDC_SECURE_LIB__
-            memcpy(m_powerConditionLog, cCLog->get_Buffer(), logSize);
-#else
-            memcpy_s(m_powerConditionLog, logSize, cCLog->get_Buffer(), logSize);// copy the buffer data to the class member pBuf
-#endif
             sLogPageStruct *idCheck;
-            idCheck = reinterpret_cast<sLogPageStruct*>(&m_powerConditionLog[0]);
+            idCheck = reinterpret_cast<sLogPageStruct*>(&m_powerConditionLog.at(0));
             byte_Swap_16(&idCheck->pageLength);
             if (IsScsiLogPage(idCheck->pageLength, idCheck->pageCode) == false)
             {
                 byte_Swap_16(&idCheck->pageLength);  // now that we know it's not scsi we need to flip the bytes back
                 m_conditionFlags = &conditionFlags;
                 get_Power_Condition_Log();
-                m_status = IN_PROGRESS;
+                m_status = eReturnValues::IN_PROGRESS;
             }
             else
             {
-                m_status = BAD_PARAMETER;
+                m_status = eReturnValues::BAD_PARAMETER;
             }
         }
         else
         {
 
-            m_status = FAILURE;
+            m_status = eReturnValues::FAILURE;
         }
     }
     else
@@ -131,33 +121,30 @@ CAtaPowerConditionsLog::CAtaPowerConditionsLog(std::string filename)
 //
 //---------------------------------------------------------------------------
 CAtaPowerConditionsLog::CAtaPowerConditionsLog(tDataPtr pData, JSONNODE *masterData)
-    : m_powerConditionLog(NULL)
-    , m_powerFlags(NULL)
+    : m_powerConditionLog()
+    , m_powerFlags(M_NULLPTR)
     , Buffer()
-    , m_status(IN_PROGRESS)
+    , m_status(eReturnValues::IN_PROGRESS)
     , m_myJSON(masterData)
-    , m_idleAPowerConditions(NULL), m_idleBPowerConditions(NULL), m_idleCPowerConditions(NULL)
-    , m_standbyYPowerConditions(NULL), m_standbyZPowerConditions(NULL)
-    , m_conditionFlags(NULL)
+    , m_idleAPowerConditions(M_NULLPTR), m_idleBPowerConditions(M_NULLPTR), m_idleCPowerConditions(M_NULLPTR)
+    , m_standbyYPowerConditions(NULL), m_standbyZPowerConditions(M_NULLPTR)
+    , m_conditionFlags(M_NULLPTR)
     , conditionFlags()
 {
-    m_powerConditionLog = new uint8_t[pData.DataLen];								// new a buffer to the point				
-#ifndef __STDC_SECURE_LIB__
-    memcpy(m_powerConditionLog, static_cast<uint8_t*>(pData.pData), pData.DataLen);
-#else
-    memcpy_s(m_powerConditionLog, pData.DataLen, static_cast<uint8_t*>(pData.pData), pData.DataLen);// copy the buffer data to the class member pBuf
-#endif
+    m_powerConditionLog.resize(pData.DataLen);  // Resize vector before copying!
+    safe_memmove(m_powerConditionLog.data(), pData.DataLen, static_cast<uint8_t*>(pData.pData), pData.DataLen);// copy the buffer data to the class member pBuf
 
-    if (m_powerConditionLog != NULL)
+
+    if (m_powerConditionLog.size() != 0)
     {
         m_conditionFlags = &conditionFlags;
         get_Power_Condition_Log();
         printPowerConditionLog(masterData);
-        m_status = SUCCESS;
+        m_status = eReturnValues::SUCCESS;
     }
     else
     {
-        m_status = FAILURE;
+        m_status = eReturnValues::FAILURE;
     }
 
 }
@@ -176,10 +163,7 @@ CAtaPowerConditionsLog::CAtaPowerConditionsLog(tDataPtr pData, JSONNODE *masterD
 //---------------------------------------------------------------------------
 CAtaPowerConditionsLog::~CAtaPowerConditionsLog()
 {
-    if (m_powerConditionLog != NULL)
-    {
-        delete[] m_powerConditionLog;
-    }
+
 }
 
 //-----------------------------------------------------------------------------
@@ -194,28 +178,28 @@ CAtaPowerConditionsLog::~CAtaPowerConditionsLog()
 //!
 //
 //  Exit:
-//!   \return SUCCESS 
+//!   \return eReturnValues::SUCCESS 
 //
 //---------------------------------------------------------------------------
 eReturnValues CAtaPowerConditionsLog::get_Power_Condition_Log()
 {
 
     //get the idle_a power condition descriptor
-    m_idleAPowerConditions = reinterpret_cast<sPowerLogDescriptor*>(&m_powerConditionLog[OFFSET_IDLE_A]);
+    m_idleAPowerConditions = reinterpret_cast<sPowerLogDescriptor*>(&m_powerConditionLog.at(OFFSET_IDLE_A));
 
     //get the idle_b power condition descriptor
-    m_idleBPowerConditions = reinterpret_cast<sPowerLogDescriptor*>(&m_powerConditionLog[OFFSET_IDLE_B]);
+    m_idleBPowerConditions = reinterpret_cast<sPowerLogDescriptor*>(&m_powerConditionLog.at(OFFSET_IDLE_B));
 
     //get the idle_c power condition descriptor
-    m_idleCPowerConditions = reinterpret_cast<sPowerLogDescriptor*>(&m_powerConditionLog[OFFSET_IDLE_C]);
+    m_idleCPowerConditions = reinterpret_cast<sPowerLogDescriptor*>(&m_powerConditionLog.at(OFFSET_IDLE_C));
 
     //get the standby_y power condition descriptor
-    m_standbyYPowerConditions = reinterpret_cast<sPowerLogDescriptor*>(&m_powerConditionLog[OFFSET_STANDBY_Y]);
+    m_standbyYPowerConditions = reinterpret_cast<sPowerLogDescriptor*>(&m_powerConditionLog.at(OFFSET_STANDBY_Y));
 
     //get the standby_z power condition descriptor
-    m_standbyZPowerConditions = reinterpret_cast<sPowerLogDescriptor*>(&m_powerConditionLog[OFFSET_STANDBY_Z]);
+    m_standbyZPowerConditions = reinterpret_cast<sPowerLogDescriptor*>(&m_powerConditionLog.at(OFFSET_STANDBY_Z));
 
-    return SUCCESS;
+    return eReturnValues::SUCCESS;
 }
 
 //-----------------------------------------------------------------------------
@@ -230,12 +214,12 @@ eReturnValues CAtaPowerConditionsLog::get_Power_Condition_Log()
 //!   \param readFlags - Power Condition Flags data.
 //
 //  Exit:
-//!   \return SUCCESS 
+//!   \return eReturnValues::SUCCESS 
 //
 //---------------------------------------------------------------------------
 eReturnValues CAtaPowerConditionsLog::get_Power_Condition_Flags(uint8_t readFlags)
 {
-    eReturnValues ret = NOT_SUPPORTED;
+    eReturnValues ret = eReturnValues::NOT_SUPPORTED;
     m_conditionFlags->powerSupportBit = false;
     m_conditionFlags->powerSaveableBit = false;
     m_conditionFlags->powerChangeableBit = false;
@@ -248,37 +232,37 @@ eReturnValues CAtaPowerConditionsLog::get_Power_Condition_Flags(uint8_t readFlag
     if (readFlags & BIT7)
     {
         m_conditionFlags->powerSupportBit = true;
-        ret = SUCCESS;
+        ret = eReturnValues::SUCCESS;
     }
     if (readFlags & BIT6)
     {
         m_conditionFlags->powerSaveableBit = true;
-        ret = SUCCESS;
+        ret = eReturnValues::SUCCESS;
     }
     if (readFlags & BIT5)
     {
         m_conditionFlags->powerChangeableBit = true;
-        ret = SUCCESS;
+        ret = eReturnValues::SUCCESS;
     }
     if (readFlags & BIT4)
     {
         m_conditionFlags->defaultTimerBit = true;
-        ret = SUCCESS;
+        ret = eReturnValues::SUCCESS;
     }
     if (readFlags & BIT3)
     {
         m_conditionFlags->savedTimmerBit = true;
-        ret = SUCCESS;
+        ret = eReturnValues::SUCCESS;
     }
     if (readFlags & BIT2)
     {
         m_conditionFlags->currentTimmerBit = true;
-        ret = SUCCESS;
+        ret = eReturnValues::SUCCESS;
     }
     if (readFlags & BIT1)
     {
         m_conditionFlags->holdPowerConditionBit = true;
-        ret = SUCCESS;
+        ret = eReturnValues::SUCCESS;
     }
     if (readFlags & BIT0)
     {
@@ -298,7 +282,7 @@ eReturnValues CAtaPowerConditionsLog::get_Power_Condition_Flags(uint8_t readFlag
 //!   \param masterData - opointer to the json data that will be printed or passed on
 //
 //  Exit:
-//!   \return SUCCESS 
+//!   \return eReturnValues::SUCCESS 
 //
 //---------------------------------------------------------------------------
 eReturnValues CAtaPowerConditionsLog::printPowerConditionLog(JSONNODE *masterData)
@@ -332,7 +316,7 @@ eReturnValues CAtaPowerConditionsLog::printPowerConditionLog(JSONNODE *masterDat
     json_push_back(m_myJSON, standByZConditionInfo);
     json_push_back(masterData, m_myJSON);
 
-    return SUCCESS;
+    return eReturnValues::SUCCESS;
 }
 
 //-----------------------------------------------------------------------------
@@ -347,13 +331,13 @@ eReturnValues CAtaPowerConditionsLog::printPowerConditionLog(JSONNODE *masterDat
 //!   \param logDescriptor - pointer to the power condition log offset
 //
 //  Exit:
-//!   \return SUCCESS 
+//!   \return eReturnValues::SUCCESS 
 //
 //---------------------------------------------------------------------------
 eReturnValues CAtaPowerConditionsLog::printPowerLogDescriptor(JSONNODE *masterData, sPowerLogDescriptor *logDescriptor)
 {
     get_Power_Condition_Flags(logDescriptor->bitFlags);
-    if (logDescriptor != NULL)
+    if (logDescriptor != M_NULLPTR)
     {
 #if defined _DEBUG
         printf("\nReserved \n");
@@ -377,27 +361,25 @@ eReturnValues CAtaPowerConditionsLog::printPowerLogDescriptor(JSONNODE *masterDa
 
 #endif
 
-		//json_push_back(masterData, json_new_a("Reserved :", "Reserved"));
         std::ostringstream temp;
-        temp << std::hex << logDescriptor->bitFlags;
+        temp << std::hex << static_cast<uint16_t>(logDescriptor->bitFlags);
 		json_push_back(masterData, json_new_a("Power Condition Flags", temp.str().c_str()));
 		printPowerConditionFlag(masterData);
-		//json_push_back(masterData, json_new_a("Reserved :", "Reserved"));
-		json_push_back(masterData, json_new_i("Default Timer Setting Field", logDescriptor->defaultTimerSetting));
-		json_push_back(masterData, json_new_i("Saved Timer Setting Field", logDescriptor->savedTimerSetting));
-		json_push_back(masterData, json_new_i("Current Timer Setting Field", logDescriptor->currentTimerSetting));
-		json_push_back(masterData, json_new_i("Norminal Recovery Timer to PM0  Active Filed", logDescriptor->normalRecoveryTime));
-		json_push_back(masterData, json_new_i("Minimum Timer Setting Field", logDescriptor->minimumTimerSetting));
-		json_push_back(masterData, json_new_i("Maximum Timer Setting Field", logDescriptor->maximumTimerSetting));
+		json_push_back(masterData, json_new_f("Default Timer Setting Field", static_cast<double>(logDescriptor->defaultTimerSetting) *.1));
+		json_push_back(masterData, json_new_f("Saved Timer Setting Field", static_cast<double>(logDescriptor->savedTimerSetting) * .1));
+		json_push_back(masterData, json_new_f("Current Timer Setting Field", static_cast<double>(logDescriptor->currentTimerSetting) * .1));
+		json_push_back(masterData, json_new_f("Norminal Recovery Timer to PM0  Active Filed", static_cast<double>(logDescriptor->normalRecoveryTime) * .1));
+		json_push_back(masterData, json_new_f("Minimum Timer Setting Field", static_cast<double>(logDescriptor->minimumTimerSetting) * .1));
+		json_push_back(masterData, json_new_f("Maximum Timer Setting Field", static_cast<double>(logDescriptor->maximumTimerSetting) * .1));
 		json_push_back(masterData, json_new_a("Reserved :", "Reserved"));
 	}
 	else
 	{
 		printf("\tNo Data Found \n");
-		return NOT_SUPPORTED;
+		return eReturnValues::NOT_SUPPORTED;
 	}
 	
-	return SUCCESS;
+	return eReturnValues::SUCCESS;
 }
 
 //-----------------------------------------------------------------------------
@@ -416,7 +398,7 @@ eReturnValues CAtaPowerConditionsLog::printPowerLogDescriptor(JSONNODE *masterDa
 void CAtaPowerConditionsLog::printPowerConditionFlag(JSONNODE *masterData)
 {
 
-    if (m_conditionFlags != NULL)
+    if (m_conditionFlags != M_NULLPTR)
     {
 
 #if defined _DEBUG

@@ -14,7 +14,7 @@ NAME=opensea-parser
 #Change the Major version when major interface changes are made.
 MAJOR=0
 #Change the Minor version when new features are added. 
-MINOR=1
+MINOR=2
 #Change the patch version when only bug fixes are made.
 PATCH=16
 
@@ -33,7 +33,7 @@ INC_DIR=-I../../include -I../../include/Seagate -I../../../opensea-common/includ
 CXX ?= g++
 CXXFLAGS ?= -Wall -Wextra -Werror=old-style-cast -Wshadow -Wmaybe-uninitialized -Wvla -Wfloat-equal \
     -Wlogical-op -Wdouble-promotion -Wformat-security
-CXXFLAGS += -c -fPIC -std=c++98 -I.
+CXXFLAGS += -c -fPIC -std=c++11 -I.
 ARCHIVE ?= ar
 LFLAGS ?= -Wall-Wl,--whole-archive ../../../opensea-common/Make/gcc/lib/$(FILE_OUTPUT_DIR)/libopensea-common.a -Wl,--no-whole-archive
 LIB_SRC_FILES = \
@@ -71,10 +71,11 @@ LIB_SRC_FILES = \
     $(SRC_DIR)CScsi_Zoned_Device_Statistics_Log.cpp\
     $(SRC_DIR)/Seagate/Farm_Common.cpp\
     $(SRC_DIR)/Seagate/CFARM_Log.cpp\
+    $(SRC_DIR)/Seagate/CFARM_Combine.cpp\
+    $(SRC_DIR)/Seagate/CFARM_WLM_Log.cpp\
     $(SRC_DIR)/Seagate/CAta_Farm_Log.cpp\
     $(SRC_DIR)/Seagate/CScsi_Farm_Log.cpp\
-    $(SRC_DIR)/Seagate/CFARM_Combine.cpp\
-	$(SRC_DIR)/Seagate/CFARM_WLM_Log.cpp\
+
 
 PROJECT_DEFINES += #-D_DEBUG
 
@@ -129,8 +130,8 @@ $(LIBS): $(LIB_OBJ_FILES)
 	rm -f $(FILE_OUTPUT_DIR)/$@
 	$(ARCHIVE) cq $(FILE_OUTPUT_DIR)/$@ $(LIB_OBJ_FILES)
 # Removing the line below since we don't need a shared object for this right now...a static library is enough for the common stuff
-	$(CXX) $(LXXFLAGS) $(LIB_OBJ_FILES) -o lib$(NAME).so.$(VERSION)
-	cd $(FILE_OUTPUT_DIR) && ln -s lib$(NAME).so* lib$(NAME).so
+	#$(CXX) $(LXXFLAGS) $(LIB_OBJ_FILES) -o lib$(NAME).so.$(VERSION)
+	#cd $(FILE_OUTPUT_DIR) && ln -s lib$(NAME).so* lib$(NAME).so
 
 clean: banner
 	rm -f $(SRC_DIR)*.o

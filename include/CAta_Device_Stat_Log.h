@@ -3,7 +3,7 @@
 //
 // Do NOT modify or remove this copyright and license
 //
-// Copyright (c) 2014 - 2023 Seagate Technology LLC and/or its Affiliates
+// Copyright (c) 2014 - 2026 Seagate Technology LLC and/or its Affiliates
 //
 // This software is subject to the terms of the Mozilla Public
 // License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -14,7 +14,8 @@
 // \file CAta_Device_Stat_Log.h
 // \brief Defines the function calls and structures for parsing Seagate logs
 #pragma once
-#include "common.h"
+#include "common_types.h"
+#include "bit_manip.h"
 #include "CLog.h"
 #include "libjson.h"
 #include "Opensea_Parser_Helper.h"
@@ -44,20 +45,20 @@ namespace opensea_parser {
 		uint8_t     lifeMaxTemp;                                    //!< Current drive HDA temperature in degrees Celsius.              204
 		uint8_t     reserved6;                                      //!< reserved                                                       205
 		uint8_t     reserved7[307];                                 //!< to the end                                                     206 - 511   
-		_sStatusResponse() : formatVersion(0), SCTversion(0), SCTspec(0), statusFlag(0), driveStatus(0), 
-#if defined __cplusplus >= 201103L
+		_sStatusResponse() : formatVersion(0), SCTversion(0), SCTspec(0), statusFlag(0), driveStatus(0),
+#if defined _WIN32  || (__cplusplus && __cplusplus >= 201103L)
 			reserved1{ 0 },
 #endif
 			extenededStatusCode(0), actionCode(0), functionCode(0), 
-#if defined __cplusplus >= 201103L
+#if defined _WIN32  || (__cplusplus && __cplusplus >= 201103L)
 			reserved2{ 0 },
 #endif
 			lba(0),
-#if defined __cplusplus >= 201103L
+#if defined _WIN32  || (__cplusplus && __cplusplus >= 201103L)
 			reserved3{ 0 }, 
 #endif
 			temp(0), reserved4(), maxTemp(0), reserved5(0), lifeMaxTemp(0), reserved6(0)
-#if defined __cplusplus >= 201103L
+#if defined _WIN32  || (__cplusplus && __cplusplus >= 201103L)
 			//CLANG++ does not like this and the best I can find on the web is that this is a C++11 addition for initializing all elements of an array to zero - TJE
 			, reserved7{ 0 }
 #endif
@@ -98,14 +99,14 @@ namespace opensea_parser {
 	}sDeviceLog04;
 	typedef struct _DEVICELOGTHREE
 	{
-		uint32_t SpdPoh;									//!< Spindle Motor Power-on Hours
-		uint32_t HeadFlyHour;								//!< Head Flying Hours
-		uint32_t HeadLoadEvent;								//!< Head Load Events
-		uint32_t ReLogicalSec;								//!< Number of Reallocated Logical Sectors
-		uint32_t ReadRecAtmp;								//!< Read Recovery Attempts 
-		uint32_t MeStartFail;								//!< Number of Mechanical Start Failures
-		uint32_t ReCandidate;								//!< Number of Reallocation Candidate Logical Sectors
-		uint32_t UnloadEvent;								//!< Number of High Priority Unload Events
+		double	 SpdPoh;									//!< Spindle Motor Power-on Hours
+		double	 HeadFlyHour;								//!< Head Flying Hours
+		uint64_t HeadLoadEvent;								//!< Head Load Events
+		uint64_t ReLogicalSec;								//!< Number of Reallocated Logical Sectors
+		uint64_t ReadRecAtmp;								//!< Read Recovery Attempts 
+		uint64_t MeStartFail;								//!< Number of Mechanical Start Failures
+		uint64_t ReCandidate;								//!< Number of Reallocation Candidate Logical Sectors
+		uint64_t UnloadEvent;								//!< Number of High Priority Unload Events
 		_DEVICELOGTHREE() :SpdPoh(0), HeadFlyHour(0), HeadLoadEvent(0), ReLogicalSec(0), ReadRecAtmp(0), MeStartFail(0), ReCandidate(0), UnloadEvent(0) {};
 	}sDeviceLog3;
 
@@ -116,6 +117,22 @@ namespace opensea_parser {
 		uint32_t CRCError;
 		_DEVICELOGSIX() : HwReset(0), ASREvent(0), CRCError(0) {};
 	}sDeviceLog6;
+
+	typedef struct _DSTempLog
+	{
+		uint16_t	version;
+		uint16_t	SamplePeriod;
+		uint16_t	Interval;
+		uint8_t		MaxOpLimit;
+		uint8_t		OverLimit;
+		uint8_t		MinOpLimit;
+		uint8_t		UnderLimit;
+		uint16_t	CBSize;
+		uint16_t	CBIndex;
+		uint8_t		Temperature;
+
+		_DSTempLog() : version(0),SamplePeriod(0), Interval(0), MaxOpLimit(0), OverLimit(0), MinOpLimit(0), UnderLimit(0), CBSize(0), CBIndex(0), Temperature(0) {};
+	}DSTempLog;
 #pragma pack(pop)
 
 
@@ -123,17 +140,17 @@ namespace opensea_parser {
     {
     protected:
         std::string                         m_name;                                                     //!< name of the class
-        uint8_t                             *pData;                                                     //!< pointer to the data
 		size_t								m_logSize;													//!< size fo the log
         eReturnValues						m_status;                                                   //!< holds the status of the class 
-		size_t								m_dataSize;													//!< data size read in form the clog
+		DSTempLog							m_tempData;													//!< temp log data
         JSONNODE							*JsonData;                                                  //!< json master data
     public:
-        CSAtaDevicStatisticsTempLogs();
-        CSAtaDevicStatisticsTempLogs(uint8_t *buffer,JSONNODE *masterData);
-        CSAtaDevicStatisticsTempLogs(const std::string &fileName, JSONNODE *masterData);
+		CSAtaDevicStatisticsTempLogs();
+        CSAtaDevicStatisticsTempLogs(uint8_t* buffer,JSONNODE *masterData);
+		explicit CSAtaDevicStatisticsTempLogs(const std::string &fileName, JSONNODE *masterData);
         virtual ~CSAtaDevicStatisticsTempLogs();
-        eReturnValues parse_SCT_Temp_Log();
+		eReturnValues print_SCT_Temp_Log();
+        eReturnValues parse_SCT_Temp_Log(uint8_t* pData);
         eReturnValues get_Status(){ return m_status; };
     };
 
@@ -142,11 +159,11 @@ namespace opensea_parser {
     protected:
         std::string                         m_name;                                                     //!< name of the class
 		eReturnValues                       m_status;                                                   //!< holds the status of the class
-        uint8_t                             *pData;                                                     //!< pointer to the data
+		std::vector<uint8_t>                v_Buff;                                                     //!< vector for holding the buffer data
         size_t                              m_deviceLogSize;                                            //!< Log size 
         sStatusResponse                     m_Response;                                                 //!< status response
 
-	eReturnValues ParseSCTDeviceStatLog(JSONNODE *masterData);
+	
         bool isBit63Set(uint64_t *value);
         bool isBit62Set(uint64_t *value);
         bool isBit61Set(uint64_t *value);
@@ -156,6 +173,7 @@ namespace opensea_parser {
         uint8_t  CheckStatusAndValid_8(uint64_t *value);
         int8_t  CheckStatusAndValidSigned_8(uint64_t *value);
         uint32_t CheckStatusAndValid_32(uint64_t *value);
+		uint64_t CheckStatusAndValid_64(uint64_t* value);
         void logPage00(uint64_t *value);
         void logPage01(uint64_t *value, JSONNODE *masterData);
         void logPage02(uint64_t *value, JSONNODE *masterData);
@@ -166,11 +184,12 @@ namespace opensea_parser {
         void logPage07(uint64_t *value, JSONNODE *masterData);
 		
     public:
-        CAtaDeviceStatisticsLogs();
-        CAtaDeviceStatisticsLogs(const std::string &fileName, JSONNODE *masterData);
+		explicit CAtaDeviceStatisticsLogs();
         CAtaDeviceStatisticsLogs(uint32_t logSize, JSONNODE *masterData, uint8_t *buffer);
+		CAtaDeviceStatisticsLogs(const std::string& fileName);
         virtual ~CAtaDeviceStatisticsLogs();
         eReturnValues get_Device_Stat_Status(){ return m_status; };
+		eReturnValues ParseSCTDeviceStatLog(JSONNODE* masterData);
     };
 #endif  //ATADEVICESTAT
 

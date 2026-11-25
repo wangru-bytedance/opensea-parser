@@ -1,8 +1,8 @@
 //
-// CScsi_Power_Condition_Transitions_Log.h  Definition of Power Condition Transistions Log Page for SAS
+// CScsi_Power_Condition_Transitions_Log.h  Definition of Power Condition Transitions Log Page for SAS
 // Do NOT modify or remove this copyright and license
 //
-// Copyright (c) 2014 - 2023 Seagate Technology LLC and/or its Affiliates
+// Copyright (c) 2014 - 2026 Seagate Technology LLC and/or its Affiliates
 //
 // This software is subject to the terms of the Mozilla Public
 // License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -10,7 +10,7 @@
 //
 // ******************************************************************************************
 
-// \file CScsi_Power_Condition_Transitions_Log.h  Definition of Power Condition Transistions Log Page for SAS
+// \file CScsi_Power_Condition_Transitions_Log.h  Definition of Power Condition Transitions Log Page for SAS
 //
 #include "CScsi_Power_Condition_Transitions_Log.h"
 
@@ -30,14 +30,14 @@ using namespace opensea_parser;
 //
 //---------------------------------------------------------------------------
 CScsiPowerConditiontLog::CScsiPowerConditiontLog()
-	: pData()
+	: v_Buff()
 	, m_PowerName("Power Condition Transitions Log")
-	, m_PowerStatus(IN_PROGRESS)
+	, m_PowerStatus(eReturnValues::IN_PROGRESS)
 	, m_PageLength(0)
 	, m_bufferLength()
 	, m_PowerParam(0)
 {
-	if (VERBOSITY_COMMAND_VERBOSE <= g_verbosity)
+	if (eVerbosityLevels::VERBOSITY_COMMAND_VERBOSE <= g_verbosity)
 	{
 		printf("%s \n", m_PowerName.c_str());
 	}
@@ -57,30 +57,33 @@ CScsiPowerConditiontLog::CScsiPowerConditiontLog()
 //
 //---------------------------------------------------------------------------
 CScsiPowerConditiontLog::CScsiPowerConditiontLog(uint8_t * buffer, size_t bufferSize, uint16_t pageLength)
-	: pData(NULL)
+	: v_Buff()
 	, m_PowerName("Power Condition Transitions Log")
-	, m_PowerStatus(IN_PROGRESS)
+	, m_PowerStatus(eReturnValues::IN_PROGRESS)
 	, m_PageLength(pageLength)
 	, m_bufferLength(bufferSize)
 	, m_PowerParam(0)
 {
-	if (VERBOSITY_COMMAND_VERBOSE <= g_verbosity)
+	if (eVerbosityLevels::VERBOSITY_COMMAND_VERBOSE <= g_verbosity)
 	{
 		printf("%s \n", m_PowerName.c_str());
 	}
-    pData = new uint8_t[pageLength];								// new a buffer to the point				
-#ifndef __STDC_SECURE_LIB__
-    memcpy(pData, buffer, pageLength);
-#else
-    memcpy_s(pData, pageLength, buffer, pageLength);// copy the buffer data to the class member pBuf
-#endif
-	if (pData != NULL)
+	if (buffer != M_NULLPTR)
 	{
-		m_PowerStatus = IN_PROGRESS;
+		v_Buff.resize(pageLength);  // Resize vector before copying!
+		safe_memmove(v_Buff.data(), pageLength, buffer, pageLength);
 	}
 	else
 	{
-		m_PowerStatus = FAILURE;
+		m_PowerStatus = eReturnValues::FAILURE;
+	}
+	if (v_Buff.size() != 0)                           // if the buffer is null then exit something did not go right
+	{
+		m_PowerStatus = eReturnValues::IN_PROGRESS;
+	}
+	else
+	{
+		m_PowerStatus = eReturnValues::FAILURE;
 	}
 
 }
@@ -90,7 +93,7 @@ CScsiPowerConditiontLog::CScsiPowerConditiontLog(uint8_t * buffer, size_t buffer
 //! \fn CScsiPowerConditiontLog
 //
 //! \brief
-//!   Description: Class deconstructor 
+//!   Description: Class destructor 
 //
 //  Entry:
 //! \param 
@@ -101,22 +104,18 @@ CScsiPowerConditiontLog::CScsiPowerConditiontLog(uint8_t * buffer, size_t buffer
 //---------------------------------------------------------------------------
 CScsiPowerConditiontLog::~CScsiPowerConditiontLog()
 {
-    if (pData != NULL)
-    {
-        delete[] pData;
-        pData = NULL;
-    }
+
 }
 //-----------------------------------------------------------------------------
 //
 //! \fn get_Power_Mode_Type
 //
 //! \brief
-//!   Description: parser out the data for Power Mode Transition Type Information
+//!   Description: parse out the data for Power Mode Transition Type Information
 //
 //  Entry:
 //! \param power - string to give the Power Mode depending on what the code is
-//! \param code - parameter code holds the value to the discription
+//! \param code - parameter code holds the value to the description
 //
 //  Exit:
 //!   \return void
@@ -125,39 +124,39 @@ CScsiPowerConditiontLog::~CScsiPowerConditiontLog()
 bool CScsiPowerConditiontLog::get_Power_Mode_Type(std::string *power, uint16_t code)
 {
     bool typeFound = false;
-	switch (code)
+	switch (static_cast<eTransitionsTypes>(code))
 	{
-		case ACTIVE:
+	case eTransitionsTypes::ACTIVE:
 		{
 			power->assign("Accumulated transitions to active");
             typeFound = true;
 			break;
 		}
-		case IDLE_A:
+		case eTransitionsTypes::IDLE_A:
 		{
             power->assign("Accumulated transitions to idle_a");
             typeFound = true;
 			break;
 		}
-		case IDLE_B:
+		case eTransitionsTypes::IDLE_B:
 		{
             power->assign("Accumulated transitions to idle_b");
             typeFound = true;
 			break;
 		}
-		case IDLE_C:
+		case eTransitionsTypes::IDLE_C:
 		{
             power->assign("Accumulated transitions to idle_c");
             typeFound = true;
 			break;
 		}
-		case STANDZ:
+		case eTransitionsTypes::STANDZ:
 		{
             power->assign("Accumulated transitions to standby_z");
             typeFound = true;
 			break;
 		}
-		case STANDY:
+		case eTransitionsTypes::STANDY:
 		{
             power->assign("Accumulated transitions to standby_y");
             typeFound = true;
@@ -176,7 +175,7 @@ bool CScsiPowerConditiontLog::get_Power_Mode_Type(std::string *power, uint16_t c
 //! \fn process_Power_Information
 //
 //! \brief
-//!   Description: parser out the data for Power parameters Information
+//!   Description: parse out the data for Power parameters Information
 //
 //  Entry:
 //! \param ) - Json node that the information will be added to
@@ -221,7 +220,7 @@ void CScsiPowerConditiontLog::process_List_Information(JSONNODE *powerData)
 //! \fn get_Data
 //
 //! \brief
-//!   Description: parser out the data for the Power conditions tranistions Log
+//!   Description: parse out the data for the Power conditions tranistions Log
 //
 //  Entry:
 //! \param masterData - Json node that holds all the data 
@@ -232,33 +231,33 @@ void CScsiPowerConditiontLog::process_List_Information(JSONNODE *powerData)
 //---------------------------------------------------------------------------
 eReturnValues CScsiPowerConditiontLog::get_Data(JSONNODE *masterData)
 {
-	eReturnValues retStatus = IN_PROGRESS;
-	if (pData != NULL)
+	eReturnValues retStatus = eReturnValues::IN_PROGRESS;
+	if (v_Buff.size() != 0)
 	{
 		JSONNODE *pageInfo = json_new(JSON_NODE);
-		json_set_name(pageInfo, "Power Conditions Tranistions Log - 1Ah");
+		json_set_name(pageInfo, "Power Conditions Transitions Log - 1Ah");
 
 		for (size_t offset = 0; offset < m_PageLength; offset += sizeof(sPowerParams))
 		{
 			if (offset < m_bufferLength && offset < UINT16_MAX)
 			{
-				m_PowerParam = reinterpret_cast<sPowerParams*>(&pData[offset]);
+				m_PowerParam = reinterpret_cast<sPowerParams*>(&v_Buff.at(offset));
 				// process the power information
 				process_List_Information(pageInfo);			
 			}
 			else
 			{
 				json_push_back(masterData, pageInfo);
-				return BAD_PARAMETER;
+				return eReturnValues::BAD_PARAMETER;
 			}
 		}
 
 		json_push_back(masterData, pageInfo);
-		retStatus = SUCCESS;
+		retStatus = eReturnValues::SUCCESS;
 	}
 	else
 	{
-		retStatus = MEMORY_FAILURE;
+		retStatus = eReturnValues::MEMORY_FAILURE;
 	}
 	return retStatus;
 }

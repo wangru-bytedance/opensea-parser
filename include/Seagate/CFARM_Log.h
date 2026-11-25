@@ -3,7 +3,7 @@
 //
 // Do NOT modify or remove this copyright and license
 //
-// Copyright (c) 2014 - 2023 Seagate Technology LLC and/or its Affiliates
+// Copyright (c) 2014 - 2026 Seagate Technology LLC and/or its Affiliates
 //
 // This software is subject to the terms of the Mozilla Public
 // License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -15,7 +15,8 @@
 #pragma once
 #include "CLog.h"
 #include <string>
-#include "common.h"
+#include <vector>
+#include "common_types.h"
 #include "libjson.h"
 #include "Farm_Helper.h"
 #include "Farm_Common.h"
@@ -30,17 +31,20 @@ namespace opensea_parser {
     class CFARMLog : public CFarmCommon
     {
     protected:
-        eReturnValues   m_FARMstatus;                       //!< status of the class
-        uint8_t*        bufferData;						    //!< pointer to the buffer	
-        bool            m_bufferdelete;                     //!<  Set true if we need to delete the buffer 
-        size_t			m_LogSize;							//!< size of the log
-        bool            m_showStatusBytes;                  //!< set to true to show the individual fiield status bytes
+        eReturnValues               m_FARMstatus;                       //!< status of the class
+        std::vector<uint8_t>        v_Buff;                             //<! vector for holding the buffer data	
+        size_t			            m_LogSize;							//!< size of the log
+        bool                        m_showStatusBytes;                  //!< set to true to show the individual fiield status bytes
+		bool                        m_showStatic;                       //!< set to true to show all data statically 
+
+        eReturnValues parse_Combined_Farm_Log(JSONNODE* masterData);
+        eReturnValues parse_Combined_Data_Set(const sComboDataSet& dataSet, bool isScsi, JSONNODE* data);
 
     public:
         CFARMLog();
-        CFARMLog(const std::string & fileName,bool showStatus);
+        CFARMLog(const std::string & fileName,bool showStatus, bool showStatic);
         explicit CFARMLog(const std::string & fileName);
-        CFARMLog(uint8_t *farmbufferData, size_t bufferSize, bool showStatus);
+        CFARMLog(uint8_t *farmbufferData, size_t bufferSize, bool showStatus, bool showStatic);
         virtual ~CFARMLog();
 		eReturnValues get_FARM_Status() { return m_FARMstatus; };
         eReturnValues parse_Device_Farm_Log( JSONNODE *masterData);

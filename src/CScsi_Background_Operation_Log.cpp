@@ -2,7 +2,7 @@
 // CScsi_Background_Operation_Log.cpp  Definition of Background Operation log page reports parameters that are specific to background operations.
 // Do NOT modify or remove this copyright and license
 //
-// Copyright (c) 2014 - 2023 Seagate Technology LLC and/or its Affiliates
+// Copyright (c) 2014 - 2026 Seagate Technology LLC and/or its Affiliates
 //
 // This software is subject to the terms of the Mozilla Public
 // License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -30,14 +30,14 @@ using namespace opensea_parser;
 //
 //---------------------------------------------------------------------------
 CScsiOperationLog::CScsiOperationLog()
-	: pData()
+	: v_Buff()
 	, m_OperationName("Background Operation Log")
-	, m_OperationsStatus(IN_PROGRESS)
+	, m_OperationsStatus(eReturnValues::IN_PROGRESS)
 	, m_PageLength(0)
 	, m_bufferLength()
 	, m_Operation()
 {
-	if (VERBOSITY_COMMAND_VERBOSE <= g_verbosity)
+	if (eVerbosityLevels::VERBOSITY_COMMAND_VERBOSE <= g_verbosity)
 	{
 		printf("%s \n", m_OperationName.c_str());
 	}
@@ -57,31 +57,34 @@ CScsiOperationLog::CScsiOperationLog()
 //  Exit:
 //
 //---------------------------------------------------------------------------
-CScsiOperationLog::CScsiOperationLog(uint8_t * buffer, size_t bufferSize, uint16_t pageLength)
-	: pData(NULL)
+CScsiOperationLog::CScsiOperationLog(uint8_t *buffer, size_t bufferSize, uint16_t pageLength)
+	: v_Buff()
 	, m_OperationName("Background Operation Log")
-	, m_OperationsStatus(IN_PROGRESS)
+	, m_OperationsStatus(eReturnValues::IN_PROGRESS)
 	, m_PageLength(pageLength)
 	, m_bufferLength(bufferSize)
 	, m_Operation()
 {
-	if (VERBOSITY_COMMAND_VERBOSE <= g_verbosity)
+	if (eVerbosityLevels::VERBOSITY_COMMAND_VERBOSE <= g_verbosity)
 	{
 		printf("%s \n", m_OperationName.c_str());
 	}
-    pData = new uint8_t[pageLength];								// new a buffer to the point				
-#ifndef __STDC_SECURE_LIB__
-    memcpy(pData, buffer, pageLength);
-#else
-    memcpy_s(pData, pageLength, buffer, pageLength);// copy the buffer data to the class member pBuf
-#endif
-	if (pData != NULL)
+	if (buffer != M_NULLPTR)
 	{
-		m_OperationsStatus = IN_PROGRESS;
+		v_Buff.resize(pageLength);  // Resize vector before copying!
+		safe_memmove(v_Buff.data(), pageLength, buffer, pageLength);
 	}
 	else
 	{
-		m_OperationsStatus = FAILURE;
+		m_OperationsStatus = eReturnValues::FAILURE;
+	}
+	if(v_Buff.size() != 0)                           // if the buffer is null then exit something did not go right
+	{
+		m_OperationsStatus = eReturnValues::IN_PROGRESS;
+	}
+	else
+	{
+		m_OperationsStatus = eReturnValues::FAILURE;
 	}
 
 }
@@ -102,11 +105,7 @@ CScsiOperationLog::CScsiOperationLog(uint8_t * buffer, size_t bufferSize, uint16
 //---------------------------------------------------------------------------
 CScsiOperationLog::~CScsiOperationLog()
 {
-    if (pData != NULL)
-    {
-        delete[] pData;
-        pData = NULL;
-    }
+
 }
 //-----------------------------------------------------------------------------
 //
@@ -167,7 +166,7 @@ void CScsiOperationLog::get_Background_Operations_status(std::string *status)
 //!   \return none
 //
 //---------------------------------------------------------------------------
-void CScsiOperationLog::process_Background_Operations_Data(JSONNODE *operationData, M_ATTR_UNUSED uint32_t offset)
+void CScsiOperationLog::process_Background_Operations_Data(JSONNODE *operationData)
 {
 	std::string myStr = "";
 #if defined _DEBUG
@@ -209,8 +208,8 @@ void CScsiOperationLog::process_Background_Operations_Data(JSONNODE *operationDa
 //---------------------------------------------------------------------------
 eReturnValues CScsiOperationLog::get_Background_Operations_Data(JSONNODE *masterData)
 {
-	eReturnValues retStatus = IN_PROGRESS;
-	if (pData != NULL)
+	eReturnValues retStatus = eReturnValues::IN_PROGRESS;
+	if (v_Buff.size() != 0)
 	{
 		JSONNODE *pageInfo = json_new(JSON_NODE);
 		json_set_name(pageInfo, "Background Operation Log - 15h");
@@ -219,24 +218,24 @@ eReturnValues CScsiOperationLog::get_Background_Operations_Data(JSONNODE *master
 		{
 			if (offset < m_bufferLength && offset < UINT16_MAX)
 			{
-				m_Operation = reinterpret_cast<sOperationParams*>(&pData[offset]);
-				process_Background_Operations_Data(pageInfo,offset);
+				m_Operation = reinterpret_cast<sOperationParams*>(&v_Buff.at(offset));
+				process_Background_Operations_Data(pageInfo);
 				offset += sizeof(sOperationParams);
 			}
 			else
 			{
 				json_push_back(masterData, pageInfo);
-				return BAD_PARAMETER;
+				return eReturnValues::BAD_PARAMETER;
 			}
 
 		}
 
 		json_push_back(masterData, pageInfo);
-		retStatus = SUCCESS;
+		retStatus = eReturnValues::SUCCESS;
 	}
 	else
 	{
-		retStatus = MEMORY_FAILURE;
+		retStatus = eReturnValues::MEMORY_FAILURE;
 	}
 	return retStatus;
 }

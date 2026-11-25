@@ -3,7 +3,7 @@
 //
 // Do NOT modify or remove this copyright and license
 //
-// Copyright (c) 2014 - 2023 Seagate Technology LLC and/or its Affiliates
+// Copyright (c) 2014 - 2026 Seagate Technology LLC and/or its Affiliates
 //
 // This software is subject to the terms of the Mozilla Public
 // License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -14,7 +14,8 @@
 // \file CAta_Power_Conditions_Log.h
 // \brief Defines the function calls and structures for pulling Seagate logs
 #pragma once
-#include "common.h"
+#include "common_types.h"
+#include "bit_manip.h"
 #include "CLog.h"
 #include "libjson.h"
 
@@ -54,7 +55,7 @@ namespace opensea_parser {
 	class CAtaPowerConditionsLog 
 	{
 	protected:
-		uint8_t                *m_powerConditionLog;
+		std::vector<uint8_t>   m_powerConditionLog;							//!< vector for holding the buffer data
 		uint8_t                *m_powerFlags;
 		tDataPtr			    Buffer;
 		eReturnValues		    m_status;
@@ -64,7 +65,7 @@ namespace opensea_parser {
 		sPowerConditionFlags    conditionFlags;
 	public:
 		CAtaPowerConditionsLog();
-		CAtaPowerConditionsLog(std::string filename);
+		explicit CAtaPowerConditionsLog(std::string &filename);
         CAtaPowerConditionsLog(tDataPtr pData, JSONNODE *masterData);
 		virtual ~CAtaPowerConditionsLog();
 		eReturnValues get_Power_Condition_Flags(uint8_t readFlags);

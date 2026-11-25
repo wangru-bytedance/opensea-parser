@@ -3,7 +3,7 @@
 //
 // Do NOT modify or remove this copyright and license
 //
-// Copyright (c) 2014 - 2023 Seagate Technology LLC and/or its Affiliates
+// Copyright (c) 2014 - 2026 Seagate Technology LLC and/or its Affiliates
 //
 // This software is subject to the terms of the Mozilla Public
 // License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -13,8 +13,10 @@
 
 // \file CScsi_Power_Condition_Transitions_Log.h   Definition of Power Condition Transistions Log Page for SAS
 #pragma once
+#include <vector>
 #include <string>
-#include "common.h"
+#include "common_types.h"
+#include "bit_manip.h"
 #include "libjson.h"
 #include "Opensea_Parser_Helper.h"
 
@@ -22,7 +24,7 @@ namespace opensea_parser {
 #ifndef SCSIPOWERLOG
 #define SCSIPOWERLOG
 #pragma pack(push, 1)
-	typedef enum _eTransitionsTypes
+	enum class eTransitionsTypes
 	{
 		ACTIVE = 0x0001,
 		IDLE_A = 0x0002,
@@ -30,7 +32,7 @@ namespace opensea_parser {
 		IDLE_C = 0x0004,
 		STANDZ = 0x0008,
 		STANDY = 0x0009
-	}eTransitionsTypes;
+	};
 	typedef struct _sPowerConditionTransisionsParameters
 	{
 		uint16_t		paramCode;							//<! The PARAMETER CODE field is defined
@@ -45,7 +47,7 @@ namespace opensea_parser {
 	{
 	private:
 	protected:
-		uint8_t						*pData;						//<! pointer to the data
+		std::vector<uint8_t>        v_Buff;                     //<! vector for holding the buffer data
 		std::string					m_PowerName;				//<! class name	
 		eReturnValues				m_PowerStatus;			    //<! status of the class
 		uint16_t					m_PageLength;				//<! length of the page
@@ -57,7 +59,7 @@ namespace opensea_parser {
 		eReturnValues get_Data(JSONNODE *masterData);
 	public:
 		CScsiPowerConditiontLog();
-		CScsiPowerConditiontLog(uint8_t * buffer, size_t bufferSize, uint16_t pageLength);
+		explicit CScsiPowerConditiontLog(uint8_t * buffer, size_t bufferSize, uint16_t pageLength);
 		virtual ~CScsiPowerConditiontLog();
 		virtual eReturnValues get_Log_Status() { return m_PowerStatus; };
 		virtual eReturnValues parse_Power_Condition_Transitions_Log(JSONNODE *masterData) { return get_Data(masterData); };

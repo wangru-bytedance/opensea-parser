@@ -18,7 +18,7 @@
 #include <string>
 #include <stdlib.h>
 #include <cmath>
-#include "common.h"
+#include "common_types.h"
 #include "libjson.h"
 #include "Farm_Helper.h"
 #include "Farm_Common.h"
@@ -54,8 +54,10 @@ namespace opensea_parser {
         bool                        m_combine_isScsi;                    //!< true if the combine log is a scsi log
         bool                        m_isComboLog;                        //!< true if the log is a combine log
         bool						m_showStatus;						 //!< if true then we will show all the status bits for each entry
+        bool                        m_showStatic;
         uint64_t                    m_version;                           //!< version number of the FARM Combined log
         size_t                      m_maxLogSize;                        //!< max log size from  the current log size
+        size_t                      m_entrySize;
         std::vector<sComboDataSet>  vdataSetInfo;                        //!< vector holding the header data for each FARM Log
 
 
@@ -80,7 +82,7 @@ namespace opensea_parser {
     public:
         CFarm_Combine();
         explicit CFarm_Combine(bool showStatus);
-        CFarm_Combine(uint8_t* buffer, size_t bufferSize, bool showStatus);
+        CFarm_Combine(uint8_t* buffer, size_t bufferSize, bool showStatus, bool showStatic = false);
         virtual ~CFarm_Combine();
         eReturnValues get_Combo_Status() { return m_status; };
         void setCombine(uint8_t* buffer, size_t bufferSize);

@@ -41,6 +41,55 @@ Visual Studio Solution files for VS 2013 or 2017
 
 Header files & functions
 
+#### Combined FARM files
+
+`CFARMLog::parse_Device_Farm_Log` recognizes the `STX_FARM_COMBINE` signature
+in files and buffers. The existing `--logType farmLog` CLI option accepts `.frmc`
+files without an additional switch:
+
+```sh
+openSeaChest_LogParser --inputLog drive.frmc --logType farmLog \
+  --printType json --outputLog drive.json
+```
+
+The parser reads the combined directory and dispatches current, factory, host
+saved, time series, long term saved, and sticky datasets to the current ATA/SCSI
+decoders. Time series, long term saved, and sticky datasets are JSON arrays;
+empty ATA slots retain their positions. `--showStatusBits` and `--showStatic`
+apply to the enclosed FARM frames.
+
+`FARM Combined Data Sets` reports each dataset's type, byte offset, size,
+collection timestamps, and parsing status. WORKLDTC is dispatched to the restored
+`CFARMWLM` decoder. It decodes legacy v3/v6 frames, including read/write commands,
+compressed LBAs and transfer lengths, streaming events, and one-second markers.
+The legacy format uses `3C 48 54 57` at the frame start and `08 46 54 57` (or its
+reverse) at offset `0x7FFF8` in each `0x80000`-byte slot. Raw legacy WLM files also
+use `--logType farmLog`.
+
+`CFARM_Combine.h/.cpp` and `CFARM_WLM_Log.h/.cpp` were restored from `9dd0480^`;
+the remaining combined dispatch had been removed by `1083760`. They are included
+in GCC, Meson, and Visual Studio builds. Current APIs, ownership, bounds checks,
+and error propagation replace unsafe historical behavior. Header version words
+and full string widths follow the opensea-operations `farm_log.c` writer.
+
+The supplied K3109W0K combined 1.1.0 samples contain `48 4C 57 4E` (`HLWN`) at
+WORKLDTC offset `0x10`. These bytes are present, but the surrounding fields do not
+fit the legacy v3/v6 layout. Raw files with this prefix are routed to WLM
+validation as well. A validation failure includes the raw header prefix,
+nonzero-byte count, and number of legacy footer signature matches; unknown
+fields are not assigned legacy meanings. Other datasets still produce output,
+and the library and CLI return failure. Unknown combined dataset types return
+`NOT_SUPPORTED`; later successful datasets never clear an earlier failure.
+Real SAS combined logs still need sample-based verification.
+
+`tests/integration_farm_combined.py` compares all 27 ATA slots in either supplied
+K3109W0K fixture against separately parsed frames in four output configurations,
+and checks malformed containers. `tests/integration_farm_wlm.py` exercises
+synthetic legacy v3/v6 frames through raw and combined CLI inputs, both footer
+byte orders, and malformed records. Synthetic fixtures verify the restored
+decoder, not the HLWN layout. The real fixtures are not included; see the
+scripts' `--help` for usage.
+
 #### Platforms
 
 Under Linux this library can be built on the following platforms using
@@ -446,4 +495,3 @@ You may add additional accurate notices of copyright ownership.
 
     This Source Code Form is "Incompatible With Secondary Licenses", as
     defined by the Mozilla Public License, v. 2.0.
-

@@ -3,7 +3,7 @@
 //
 // Do NOT modify or remove this copyright and license
 //
-// Copyright (c) 2014 - 2023 Seagate Technology LLC and/or its Affiliates
+// Copyright (c) 2014 - 2026 Seagate Technology LLC and/or its Affiliates
 //
 // This software is subject to the terms of the Mozilla Public
 // License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -28,15 +28,16 @@
 #define FLASH_EVENTS            8
 #define REALLOCATIONEVENTS      15
 #define PRINTABLE_MODEL_NUMBER  12
+
 // FARM Combine definitions ascii check values
 #define FARM_CURRENT            0x4641524d20202020                      //!< "FARM    "
 #define FARM_FACTORY            0x464143544f525920                      //!< "FACTORY "
 #define FARM_TIME               0x4641524d54494d45                      //<! "FARMTIME"
 #define FARM_STICKY             0x4641524d5354434b                      //<! "FARMSTCK"
-#define FARM_WLDTR              0x574f524b4c445443                      //<! "WORKLDTR"
+#define FARM_WLDTR              0x574f524b4c445443                      //<! "WORKLDTC"
 #define FARM_SAVE               0x4641524d53415645                      //<! "FARMSAVE"
 #define FARM_LONG_SAVE          0x4641524d4c4f4e47                      //<! "FARMLONG"
-
+#define FARM_NNW                0x52454d52414600c0                      //<! "FARMER  "
 
 #define ASSERT_UNKNOWN                         0x00
 #define MICROPROCESSOR_FAILED                  0x08
@@ -109,7 +110,6 @@
 #define FLASH_IOEDC_PARITY_ERROR               0xF4
 #define SERIAL_PORT_DUMP_MODE                  0xF5
 
-
 // Frame Type Identification  0x0 - 0xF
 #define CURRENT_FRAME                           0x00
 #define TIME_SERIES_FRAME                       0x01
@@ -127,6 +127,8 @@
 #define FARM_DRAM_COPY_FARME                    0x0D  //sata only
 #define FARM_DRAM_COPY_DIAG_FRAME               0x0E  
 #define FARM_UDS_COPY_FRAME                     0x0F
+#define FARM_NEURAL_NETWORK                     0x10
+#define FARM_AFTER_REGEN                        0x11
 #define FARM_EMPTY_FRAME                        0xff
 
 typedef enum _eReallocationCauses
@@ -148,6 +150,49 @@ typedef enum _eReallocationCauses
     SERVO_WEDGE,
 }eReallocationCauses;
 
+// SAS log page information
+#define FARMLOGPAGE                             0x3D
+
+#define FARM_LOG_PAGE                           0x03
+#define FARM_FACTORY_LOG_PAGE                   0x04
+#define FARM_TIME_SERIES_0                      0x10
+#define FARM_TIME_SERIES_1                      0x11
+#define FARM_TIME_SERIES_2                      0x12
+#define FARM_TIME_SERIES_3                      0x13
+#define FARM_TIME_SERIES_4                      0x14
+#define FARM_TIME_SERIES_5                      0x15
+#define FARM_TIME_SERIES_6                      0x16
+#define FARM_TIME_SERIES_7                      0x17
+#define FARM_TIME_SERIES_8                      0x18
+#define FARM_TIME_SERIES_9                      0x19
+#define FARM_TIME_SERIES_10                     0x1A
+#define FARM_TIME_SERIES_11                     0x1B
+#define FARM_TIME_SERIES_12                     0x1C
+#define FARM_TIME_SERIES_13                     0x1D
+#define FARM_TIME_SERIES_14                     0x1E
+#define FARM_TIME_SERIES_15                     0x1F
+#define FARM_LONG_TERM_SAVES_0                  0xC0
+#define FARM_LONG_TERM_SAVES_1                  0xC1
+#define FARM_GLIST_ENTRIES                      0xC2
+#define FARM_FIRST_UNRECOVERABLE                0xC3
+#define FARM_TENTH_UNRECOVERABLE                0xC4
+#define FARM_FIRST_CTO                          0xC5
+#define FARM_LAST_FRAME                         0xC6
+#define FARM_TEMP_TRIGGER_LOG_PAGE              0xC7
+
+#pragma pack(push, 1)
+// Combined FARM directory entry, restored from before 1083760.
+// Integers on disk are little endian; dataSetType is the eight-byte ASCII tag.
+typedef struct _sComboDataSet
+{
+    uint64_t        dataSetType;
+    uint32_t        location;
+    uint32_t        dataSize;
+    uint64_t        startTime;
+    uint64_t        endTime;
+
+    _sComboDataSet() : dataSetType(0), location(0), dataSize(0), startTime(0), endTime(0) {};
+}sComboDataSet;
 
 typedef struct _sStringIdentifyData
 {
@@ -158,7 +203,7 @@ typedef struct _sStringIdentifyData
     std::string modelNumber;                                    //!< Model Number (4.3 and newer will have this)
 }sStringIdentifyData;
 
-#pragma pack(push, 1)
+
 typedef struct _sFarmHeader
 {
     uint64_t        signature;                                  //!< Log Signature = 0x00004641524D4552
@@ -168,9 +213,13 @@ typedef struct _sFarmHeader
     uint64_t        logSize;                                    //!< log size in bytes
     uint64_t        pageSize;                                   //!< page size in bytes
     uint64_t        headsSupported;                             //!< Maximum Drive Heads Supported
-    uint64_t        copies;                                     //!< Number of Historical Copies
+    uint64_t        historicalCopies;                           //!< Number of Historical Copies
     uint64_t        reasonForFrameCapture;                      //!< Reason for Frame Capture (added 4.14)
-    _sFarmHeader() : signature(0), majorRev(0), minorRev(0), pagesSupported(0), logSize(0), pageSize(0), headsSupported(0), copies(0), reasonForFrameCapture(0) {};
+    uint64_t        historicalFrames;                           //!< Number of Historical frames (added 4.43)
+    uint64_t        pageBitMap;                                 //!< Bit Map of Available Pages (each bit represent a supported page)
+
+    _sFarmHeader() : signature(0), majorRev(0), minorRev(0), pagesSupported(0), logSize(0), pageSize(0), headsSupported(0), historicalCopies(0),
+        reasonForFrameCapture(0), historicalFrames(0), pageBitMap(0) {};
 }sFarmHeader;
 
 typedef struct _sWorkLoadStat
@@ -233,12 +282,12 @@ typedef struct _sWorkLoadStat
     union
     {
         uint64_t        numberOfWriteCmds3;                         //!< ATA - Number of Write commands from 25-50% of LBA space for last 3 SMART Summary Frames (added 4.4)
-        uint64_t        numReadTransferMid1;                      //!< SCSI - Number of Read Commands of transfer length (16KB – 512KB] for last 3 SMART Summary Frames
+        uint64_t        numReadTransferMid1;                      //!< SCSI - Number of Read Commands of transfer length (16KB - 512KB] for last 3 SMART Summary Frames
     };
     union
     {
         uint64_t        numberOfWriteCmds4;                         //!< ATA - Number of Write commands from 50-100% of LBA space for last 3 SMART Summary Frames (added 4.4)
-        uint64_t        numReadTransferMid2;                      //!< SCSI - Number of read Commands of transfer length (512KB – 2MB] for last 3 SMART Summary Frames
+        uint64_t        numReadTransferMid2;                      //!< SCSI - Number of read Commands of transfer length (512KB - 2MB] for last 3 SMART Summary Frames
     };
     union 
     {
@@ -249,16 +298,16 @@ typedef struct _sWorkLoadStat
     union 
     {
         uint64_t        numWriteTransferSmall;                      //!< SCSI - Number of Write Commands of transfer length <=16KB for last 3 SMART Summary Frames
-        uint64_t        numReadTransferMid1ATA;                      //!< ATA - Number of Read Commands of transfer length (16KB – 512KB] for last 3 SMART Summary Frames    
+        uint64_t        numReadTransferMid1ATA;                      //!< ATA - Number of Read Commands of transfer length (16KB - 512KB] for last 3 SMART Summary Frames    
     };
     union 
     {
-        uint64_t        numWriteTransferMid1;                       //!< SCSI - Number of Write Commands of transfer length (16KB – 512KB] for last 3 SMART Summary Frames
-        uint64_t        numReadTransferMid2ATA;                      //!< ATA - Number of Read Commands of transfer length (512KB – 2MB] for last 3 SMART Summary Frames
+        uint64_t        numWriteTransferMid1;                       //!< SCSI - Number of Write Commands of transfer length (16KB - 512KB] for last 3 SMART Summary Frames
+        uint64_t        numReadTransferMid2ATA;                      //!< ATA - Number of Read Commands of transfer length (512KB - 2MB] for last 3 SMART Summary Frames
     };
     union 
     {
-        uint64_t        numWriteTransferMid2;                       //!< SCSI - Number of Write Commands of transfer length (512KB – 2MB] for last 3 SMART Summary Frames
+        uint64_t        numWriteTransferMid2;                       //!< SCSI - Number of Write Commands of transfer length (512KB - 2MB] for last 3 SMART Summary Frames
         uint64_t        numReadTransferLargeATA;                      //!< ATA - Number of Read Commands of transfer length > 2MB for last 3 SMART Summary Frames    };
     };
     union 
@@ -267,8 +316,8 @@ typedef struct _sWorkLoadStat
         uint64_t        numWriteTransferSmallATA;                      //!< ATA - Number of Write Commands of transfer length <=16KB for last 3 SMART Summary Frames
     };
 
-    uint64_t        numWriteTransferMid1ATA;                      //!< ATA - Number of Read Commands of transfer length (16KB – 512KB] for last 3 SMART Summary Frames
-    uint64_t        numWriteTransferMid2ATA;                      //!< ATA - Number of Read Commands of transfer length (512KB – 2MB] for last 3 SMART Summary Frames
+    uint64_t        numWriteTransferMid1ATA;                      //!< ATA - Number of Read Commands of transfer length (16KB - 512KB] for last 3 SMART Summary Frames
+    uint64_t        numWriteTransferMid2ATA;                      //!< ATA - Number of Read Commands of transfer length (512KB - 2MB] for last 3 SMART Summary Frames
     uint64_t        numWriteTransferLargeATA;                     //!< ATA - Number of Read Commands of transfer length > 2MB for last 3 SMART Summary Frames 
     uint64_t        cntQueueDepth1;                               //!< ATA - Count of Queue Depth =1 at 30s intervals for last 3 SMART Summary Frames
     uint64_t        cntQueueDepth2;                               //!< ATA - Count of Queue Depth =2 at 30s intervals for last 3 SMART Summary Frames
@@ -282,25 +331,32 @@ typedef struct _sWorkLoadStat
     uint64_t        numRandWLDitherHoldOffAct1;                   //!< ATA - Number of times dither was held off during random workloads during current power cycle, Actuator 1
     uint64_t        numSequentialWLDitherHoldOffAct1;             //!< ATA - Number of times dither was held off during sequential workloads during current power cycle, Actuator 1
     uint64_t        hotWriteStatistics;                           //!< ATA - Hot write statistics: including metadata and 2400-band/region workload rating data
+    uint64_t        reserved[349];
+    uint64_t        numReadTransferBin4ATA;                       //!< ATA - Number of Read Commands of transfer length bin 4 for last 3 SMART Summary Frames
+    uint64_t        numReadTransferBin5ATA;                       //!< ATA - Number of Read Commands of transfer length bin 5 for last 3 SMART Summary Frames
+    uint64_t        numReadTransferBin6ATA;                       //!< ATA - Number of Read Commands of transfer length bin 6 for last 3 SMART Summary Frames
+    uint64_t        numReadTransferBin7ATA;                       //!< ATA - Number of Read Commands of transfer length bin 7 for last 3 SMART Summary Frames
+    uint64_t        numWriteTransferBin4ATA;                      //!< ATA - Number of Write Commands of transfer length bin 4 for last 3 SMART Summary Frames
+    uint64_t        numWriteTransferBin5ATA;                      //!< ATA - Number of Write Commands of transfer length bin 5 for last 3 SMART Summary Frames
+    uint64_t        numWriteTransferBin6ATA;                      //!< ATA - Number of Write Commands of transfer length bin 6 for last 3 SMART Summary Frames
+    uint64_t        numWriteTransferBin7ATA;                      //!< ATA - Number of Write Commands of transfer length bin 7 for last 3 SMART Summary Frames
 
 
-    _sWorkLoadStat() : pageNumber(0), copyNumber(0), workloadPercentage(0), totalReadCommands(0), totalWriteCommands(0), totalRandomReads(0), totalRandomWrites(0), 
-        totalNumberofOtherCMDS(0), logicalSecWritten(0), logicalSecRead(0), dither(0), ditherRandom(0), ditherSequential(0), numberOfReadCmds1(0), numberOfReadCmds2(0), 
+
+    _sWorkLoadStat() : pageNumber(0), copyNumber(0), workloadPercentage(0), totalReadCommands(0), totalWriteCommands(0), totalRandomReads(0), totalRandomWrites(0),
+        totalNumberofOtherCMDS(0), logicalSecWritten(0), logicalSecRead(0), dither(0), ditherRandom(0), ditherSequential(0), numberOfReadCmds1(0), numberOfReadCmds2(0),
         numberOfReadCmds3(0), numberOfReadCmds4(0), numberOfWriteCmds1(0), numberOfWriteCmds2(0), numberOfWriteCmds3(0), numberOfWriteCmds4(0),
-        numReadTransferLarge(0), numWriteTransferSmall(0),  numWriteTransferMid1(0), numWriteTransferMid2(0), numWriteTransferLarge(0), 
+        numReadTransferLarge(0), numWriteTransferSmall(0), numWriteTransferMid1(0), numWriteTransferMid2(0), numWriteTransferLarge(0),
         numWriteTransferMid1ATA(0), numWriteTransferMid2ATA(0), numWriteTransferLargeATA(0), cntQueueDepth1(0), cntQueueDepth2(0),
         cntQueueDepth3to4(0), cntQueueDepth5to8(0), cntQueueDepth9to16(0), cntQueueDepth17to32(0), cntQueueDepth33to64(0),
-        cntQueueDepthmorethan64(0), numDithEvtAct1(0), numRandWLDitherHoldOffAct1(0), numSequentialWLDitherHoldOffAct1(0), hotWriteStatistics(0) {};
+        cntQueueDepthmorethan64(0), numDithEvtAct1(0), numRandWLDitherHoldOffAct1(0), numSequentialWLDitherHoldOffAct1(0), hotWriteStatistics(0)
+#if defined __cplusplus && __cplusplus >= 201103L
+        ,reserved {0}
+#endif
+        ,numReadTransferBin4ATA(0), numReadTransferBin5ATA(0), numReadTransferBin6ATA(0), numReadTransferBin7ATA(0)
+        ,numWriteTransferBin4ATA(0), numWriteTransferBin5ATA(0), numWriteTransferBin6ATA(0), numWriteTransferBin7ATA(0)
+    {};
 }sWorkLoadStat;
 
-typedef struct _sComboDataSet
-{
-    uint64_t        dataSetType;                                //!< 
-    uint32_t        location;                                   //!<
-    uint32_t        dataSize;                                   //!<
-    uint64_t        startTime;                                  //!<
-    uint64_t        endTime;                                    //!<
 
-    _sComboDataSet() : dataSetType(0), location(0), dataSize(0), startTime(0), endTime(0) {};
-}sComboDataSet;
 #pragma pack(pop)

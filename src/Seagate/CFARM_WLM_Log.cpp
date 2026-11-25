@@ -15,6 +15,8 @@
 // *****************************************************************************
 
 #include "CFARM_WLM_Log.h"   
+#include <algorithm>
+#include <cstring>
 
 using namespace opensea_parser;
 //-----------------------------------------------------------------------------
@@ -35,7 +37,7 @@ CFARMWLM::CFARMWLM()
     , m_name("WLM Log")
     , m_logSize(0)
     , m_version(0)
-    , m_WLMstatus(IN_PROGRESS)
+    , m_WLMstatus(eReturnValues::IN_PROGRESS)
     , m_DataHeader()
     , m_DataHeaderPTR(NULL)
 {
@@ -63,11 +65,11 @@ CFARMWLM::CFARMWLM( uint8_t *bufferData, uint32_t dataSize, JSONNODE *masterData
     , m_name("WLM Log")
     , m_logSize(dataSize)
     , m_version(0)
-    , m_WLMstatus(IN_PROGRESS)
+    , m_WLMstatus(eReturnValues::IN_PROGRESS)
     , m_DataHeader()
     , m_DataHeaderPTR(NULL)
 {
-    if (bufferData != NULL)                           // if the buffer is null then exit something did not go right
+    if (bufferData != NULL && masterData != NULL)
     {
         m_DataHeaderPTR = &m_DataHeader;
         if (validate_WLM())
@@ -78,22 +80,25 @@ CFARMWLM::CFARMWLM( uint8_t *bufferData, uint32_t dataSize, JSONNODE *masterData
             }
             catch (...)
             {
-                m_WLMstatus = PARSING_EXCEPTION_FAILURE;
+                m_WLMstatus = eReturnValues::PARSING_EXCEPTION_FAILURE;
             }
 
         }
         else
         {
-            print_Empty_WLM_Log(masterData);
-            m_WLMstatus = VALIDATION_FAILURE;
+            print_Validation_Error(masterData);
+            m_WLMstatus = eReturnValues::VALIDATION_FAILURE;
         }
     }
     else
     {
-        print_Empty_WLM_Log(masterData);
-        m_WLMstatus = FAILURE;
+        if (masterData != NULL)
+        {
+            print_Empty_WLM_Log(masterData);
+        }
+        m_WLMstatus = eReturnValues::BAD_PARAMETER;
     }
-    pData = NULL; //so that its not deleted in destructor. Caller should noy=t use pData after this function returns
+    pData = NULL; // Borrowed buffer; ownership remains with the caller.
    // _CrtDumpMemoryLeaks();
 }
 
@@ -117,11 +122,7 @@ CFARMWLM::~CFARMWLM()
         vFrame.clear();
         vFrame.swap(vBlankFrame);
     }
-    if (pData)
-    {
-        delete[] pData;
-        pData = NULL;
-    }
+    pData = NULL;
     //  _CrtDumpMemoryLeaks();
 }
 //-----------------------------------------------------------------------------
@@ -162,36 +163,83 @@ bool CFARMWLM::is_FARM(uint32_t signature)
 //---------------------------------------------------------------------------
 bool CFARMWLM::validate_WLM()
 {
-#define BYTES 8
-
-    size_t offset = 0;
-    uint32_t endSignature = 0;
-    
-    // get Header information Then get the ending signature
-    if (get_WLM_Header_Data(offset))
-    { 
-        // go to the end of the frame and get the ending singature.   TRACESIZE and back 8 bytes to get the ending signature
-        offset = TRACESIZE - BYTES;   
-        // get the ending signature
-        endSignature = M_BytesTo4ByteValue(pData[offset], pData[offset + 1], pData[offset + 2], pData[offset + 3]);
-    }
-    else
+    // Validate every slot before decoding any commands.
+    if (pData == NULL || m_logSize == 0 || m_logSize % TRACESIZE != 0)
     {
-        m_WLMstatus = VALIDATION_FAILURE;
+        m_validationError = "Input length is not a nonzero multiple of the legacy 0x80000-byte frame slot";
         return false;
     }
+    for (size_t offset = 0; offset < m_logSize; offset += TRACESIZE)
+    {
+        m_validationOffset = offset;
+        if (!get_WLM_Header_Data(offset))
+        {
+            m_validationError = "Invalid legacy WLM frame size or truncated header";
+            return false;
+        }
+        if (!is_FARM(m_DataHeader.signature))
+        {
+            m_validationError = "Legacy WLM header signature 3C 48 54 57 is absent at the frame start";
+            return false;
+        }
+        if (m_DataHeader.rev != WLM3 && m_DataHeader.rev != WLM6)
+        {
+            m_validationError = "Legacy WLM revision is neither 3 nor 6";
+            return false;
+        }
+        if (!check_For_Footer_Signature(offset + TRACESIZE - 8))
+        {
+            m_validationError = "Legacy WLM footer is absent at frame offset 0x7FFF8";
+            return false;
+        }
+    }
+    return true;
+}
 
-    // check the signatures if good return true
-    if (m_DataHeader.signature == FARMWLM && endSignature == FARMFOOTWLM && (m_DataHeader.rev == WLM3 || m_DataHeader.rev == WLM6))
+void CFARMWLM::print_Validation_Error(JSONNODE* wlm)
+{
+    JSONNODE* info = json_new(JSON_NODE);
+    json_set_name(info, "WLM Validation");
+    json_push_back(info, json_new_a("Validation Error", m_validationError.c_str()));
+    set_json_64bit(info, "Frame Offset", m_validationOffset, false);
+    set_json_64bit(info, "Input Size", m_logSize, false);
+    std::ostringstream prefix;
+    for (size_t offset = 0; offset < std::min<size_t>(m_logSize, 80); ++offset)
     {
-        return true;
+        if (offset != 0)
+        {
+            prefix << ' ';
+        }
+        prefix << std::hex << std::uppercase << std::setfill('0') << std::setw(2)
+               << static_cast<unsigned int>(pData[offset]);
     }
-    else
+    json_push_back(info, json_new_a("Header Prefix (hex)", prefix.str().c_str()));
+    if (m_logSize >= 20 && std::memcmp(pData + 16, "HLWN", 4) == 0)
     {
-        m_WLMstatus = VALIDATION_FAILURE;
+        json_push_back(info, json_new_a("Header Candidate", "HLWN at offset 0x10; field layout is not established"));
     }
-    // doesn't look right pass false back
-    return false;
+    size_t nonzero = 0;
+    size_t lastNonzero = 0;
+    size_t footerMatches = 0;
+    for (size_t offset = 0; offset < m_logSize; ++offset)
+    {
+        if (pData[offset] != 0)
+        {
+            ++nonzero;
+            lastNonzero = offset;
+        }
+        if (check_For_Footer_Signature(offset))
+        {
+            ++footerMatches;
+        }
+    }
+    set_json_64bit(info, "Nonzero Byte Count", nonzero, false);
+    if (nonzero != 0)
+    {
+        set_json_64bit(info, "Last Nonzero Byte Offset", lastNonzero, false);
+    }
+    set_json_64bit(info, "Legacy Footer Signature Matches", footerMatches, false);
+    json_push_back(wlm, info);
 }
 //-----------------------------------------------------------------------------
 //
@@ -209,7 +257,10 @@ bool CFARMWLM::validate_WLM()
 //---------------------------------------------------------------------------
 bool CFARMWLM::check_For_Footer_Signature(size_t offset)
 {
-    
+    if (pData == NULL || offset > m_logSize || m_logSize - offset < 4)
+    {
+        return false;
+    }
     uint32_t footer = M_BytesTo4ByteValue(pData[offset], pData[offset + 1], pData[offset + 2], pData[offset + 3]);
     if (footer == FARMFOOTWLM || footer == FARMFOOTWLMSWAP)
     {
@@ -233,6 +284,10 @@ bool CFARMWLM::check_For_Footer_Signature(size_t offset)
 //---------------------------------------------------------------------------
 bool CFARMWLM::get_WLM_Header_Data(size_t offset)
 {
+    if (pData == NULL || offset > m_logSize || m_logSize - offset < sizeof(sWLMDataHeader))
+    {
+        return false;
+    }
     // get the signature of the WLM trace
     m_DataHeader.signature = M_BytesTo4ByteValue(pData[offset], pData[offset + 1], pData[offset + 2], pData[offset + 3]);
     offset += sizeof(m_DataHeader.signature);
@@ -252,7 +307,7 @@ bool CFARMWLM::get_WLM_Header_Data(size_t offset)
     offset += sizeof(m_DataHeader.cycleCount) + sizeof(m_DataHeader.pad1);
 
     m_DataHeader.frameSize = M_BytesTo4ByteValue(pData[offset + 3], pData[offset + 2], pData[offset + 1], pData[offset]);
-    if (m_DataHeader.frameSize >= TRACESIZE || m_DataHeader.frameSize <= 1)
+    if (m_DataHeader.frameSize > TRACESIZE - 8 || m_DataHeader.frameSize < sizeof(sWLMDataHeader))
     {
         return false;
     }
@@ -354,7 +409,7 @@ eReturnValues CFARMWLM::print_Empty_WLM_Log(JSONNODE *wlm)
     std::string emptyStr;
     emptyStr = "None";
 
-    if (VERBOSITY_COMMAND_VERBOSE <= g_verbosity)
+    if (eVerbosityLevels::VERBOSITY_COMMAND_VERBOSE <= g_verbosity)
     {
         printf("\tPower on Hours:                     %s \n", "-1");
         printf("\tTotal Number of Other Commands:           %s \n", emptyStr.c_str());
@@ -386,7 +441,7 @@ eReturnValues CFARMWLM::print_Empty_WLM_Log(JSONNODE *wlm)
     json_push_back(wlmJson, json_new_a("Idle Time", emptyStr.c_str()));
     json_push_back(wlm, wlmJson);
 
-    return SUCCESS;
+    return eReturnValues::SUCCESS;
 }
 //-----------------------------------------------------------------------------
 //
@@ -406,11 +461,11 @@ eReturnValues CFARMWLM::print_Summary_Log(size_t* offset, JSONNODE *wlm)
 {
 #define LBAOFFSET 0x3c
 #define HEADERSIZE 8
-    eReturnValues retStatus = SUCCESS;
+    eReturnValues retStatus = eReturnValues::SUCCESS;
     if (get_WLM_Header_Data(*offset ))
     {
 
-        if (VERBOSITY_COMMAND_VERBOSE <= g_verbosity)
+        if (eVerbosityLevels::VERBOSITY_COMMAND_VERBOSE <= g_verbosity)
         {
             printf("Workload Trace Header\n");
             printf("\tFrame Number:                             %" PRIu16" \n", m_DataHeader.farmeNumber);
@@ -443,14 +498,14 @@ eReturnValues CFARMWLM::print_Summary_Log(size_t* offset, JSONNODE *wlm)
         *offset += LBAOFFSET;
         if (!get_Trace_Data(offset, wlmJson))
         {
-            retStatus = PARSE_FAILURE;
+            retStatus = eReturnValues::PARSE_FAILURE;
         }
 
         json_push_back(wlm, wlmJson);
     }
     else
     {
-        retStatus = PARSE_FAILURE;
+        retStatus = eReturnValues::PARSE_FAILURE;
     }
     return retStatus;
 }
@@ -479,20 +534,34 @@ bool CFARMWLM::get_Trace_Data(size_t* offset, JSONNODE* wlmJson)
     JSONNODE* tData = json_new(JSON_ARRAY);
     json_set_name(tData, ("Trace Data"));
 
-    while (frameOffset <= m_DataHeader.frameSize)
+    while (frameOffset < m_DataHeader.frameSize)
     {
         size_t startOffset = *offset;
         uint8_t encodeByte = pData[*offset];
         uint8_t tLength = M_GETBITRANGE(encodeByte, 7, 4);
         uint8_t LDes = M_GETBITRANGE(encodeByte, 2, 0);
-        if (VERBOSITY_COMMAND_VERBOSE <= g_verbosity)
+        if (eVerbosityLevels::VERBOSITY_COMMAND_VERBOSE <= g_verbosity)
         {
             printf("LDes  0x %" PRIx8" \n", LDes);
-            printf("offset %llu \n", *offset);
+            printf("offset %zu \n", *offset);
             printf("encodeByte  0x %" PRIx8" \n", encodeByte);
             printf("tLength  0x %" PRIx8" \n", tLength);
         }
         *offset += 1;
+
+        // Check the whole encoded command before any variable-length reads.
+        const size_t lengthBytes = tLength == 9 ? 1 : (tLength == 0xA ? 2 : 0);
+        const size_t lbaBytes = LDes == 0 ? (tLength == 0xF ? 0 : 5) :
+            (LDes == 4 ? 0 : (LDes & 3));
+        const size_t needed = 1 + lengthBytes + lbaBytes;
+        if (needed > m_DataHeader.frameSize - frameOffset ||
+            startOffset > m_logSize || needed > m_logSize - startOffset ||
+            tLength == 0xB || tLength == 0xC ||
+            (tLength == 0xF && encodeByte != 0xF0))
+        {
+            json_push_back(wlmJson, tData);
+            return false;
+        }
 
         // if tLength is 0x08 the transfer size is the same as the previous operation, so don't change it
         if (tLength != 0x08)
@@ -571,7 +640,7 @@ bool CFARMWLM::get_Trace_Data(size_t* offset, JSONNODE* wlmJson)
             json_push_back(wlmJson, tData);
             return false;
         }
-        if (VERBOSITY_COMMAND_VERBOSE <= g_verbosity)
+        if (eVerbosityLevels::VERBOSITY_COMMAND_VERBOSE <= g_verbosity)
         {
             printf("LBA  0x %" PRIx64" \n", lba);
             printf("Transfer length %" PRIu16" \n", tranSize);
@@ -644,15 +713,15 @@ bool CFARMWLM::get_Trace_Data(size_t* offset, JSONNODE* wlmJson)
 eReturnValues CFARMWLM::parse_WLM_Summary(JSONNODE *masterData)
 {
     // _CrtDumpMemoryLeaks();
-    eReturnValues retStatus = SUCCESS;
+    eReturnValues retStatus = eReturnValues::SUCCESS;
     size_t offset = 0;
-    uint32_t traceLine = 0;
+    size_t traceLine = 0;
    
     offset = 0;
     while (offset  < m_logSize)
     {
         retStatus = print_Summary_Log(&offset, masterData);
-        if (retStatus != SUCCESS)
+        if (retStatus != eReturnValues::SUCCESS)
         {
             return retStatus;
         }
@@ -662,5 +731,3 @@ eReturnValues CFARMWLM::parse_WLM_Summary(JSONNODE *masterData)
  
     return retStatus;
 }
-
-

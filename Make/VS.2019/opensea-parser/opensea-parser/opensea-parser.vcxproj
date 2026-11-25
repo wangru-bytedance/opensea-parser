@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" ToolsVersion="12.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Debug|ARM">
@@ -51,7 +51,7 @@
     </ProjectConfiguration>
   </ItemGroup>
   <PropertyGroup Label="Globals">
-    <ProjectGuid>{D7A121F5-30B5-4CA9-A272-3B6469FF8F46}</ProjectGuid>
+    <ProjectGuid>{4A595845-A583-414F-8F29-A3A30CE40AB6}</ProjectGuid>
     <Keyword>Win32Proj</Keyword>
     <RootNamespace>openseaparser</RootNamespace>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
@@ -251,12 +251,8 @@
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
-    <Lib>
-      <AdditionalDependencies>opensea-common.lib</AdditionalDependencies>
-    </Lib>
-    <Lib>
-      <AdditionalLibraryDirectories>..\..\..\..\..\opensea-common\Make\VS.2019\opensea-common\$(Platform)\$(Configuration);..\..\..\..\..\opensea-operations\Make\VS.2019\opensea-operations\$(Platform)\$(Configuration)\LIB</AdditionalLibraryDirectories>
-    </Lib>
+    <Lib />
+    <Lib />
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|ARM'">
     <ClCompile>
@@ -276,12 +272,8 @@
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
-    <Lib>
-      <AdditionalDependencies>opensea-common.lib</AdditionalDependencies>
-    </Lib>
-    <Lib>
-      <AdditionalLibraryDirectories>..\..\..\..\..\opensea-common\Make\VS.2019\opensea-common\$(Platform)\$(Configuration);..\..\..\..\..\opensea-operations\Make\VS.2019\opensea-operations\$(Platform)\$(Configuration)\LIB</AdditionalLibraryDirectories>
-    </Lib>
+    <Lib />
+    <Lib />
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Static-Debug|Win32'">
     <ClCompile>
@@ -301,12 +293,8 @@
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
-    <Lib>
-      <AdditionalDependencies>opensea-common.lib</AdditionalDependencies>
-    </Lib>
-    <Lib>
-      <AdditionalLibraryDirectories>..\..\..\..\..\opensea-common\Make\VS.2019\opensea-common\$(Platform)\$(Configuration);..\..\..\..\..\opensea-operations\Make\VS.2019\opensea-operations\$(Platform)\$(Configuration)\LIB</AdditionalLibraryDirectories>
-    </Lib>
+    <Lib />
+    <Lib />
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Static-Debug|ARM'">
     <ClCompile>
@@ -326,12 +314,8 @@
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
-    <Lib>
-      <AdditionalDependencies>opensea-common.lib</AdditionalDependencies>
-    </Lib>
-    <Lib>
-      <AdditionalLibraryDirectories>..\..\..\..\..\opensea-common\Make\VS.2019\opensea-common\$(Platform)\$(Configuration);..\..\..\..\..\opensea-operations\Make\VS.2019\opensea-operations\$(Platform)\$(Configuration)\LIB</AdditionalLibraryDirectories>
-    </Lib>
+    <Lib />
+    <Lib />
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
@@ -342,17 +326,14 @@
       <AdditionalIncludeDirectories>..\..\..\..\include;..\..\..\..\..\libjson;..\..\..\..\..\opensea-common\include;..\..\..\..\..\opensea-parser\include;..\..\..\..\..\opensea-parser\include\Seagate</AdditionalIncludeDirectories>
       <DebugInformationFormat>EditAndContinue</DebugInformationFormat>
       <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
+      <AdditionalOptions>/Zc:__cplusplus</AdditionalOptions>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
-    <Lib>
-      <AdditionalDependencies>opensea-common.lib</AdditionalDependencies>
-    </Lib>
-    <Lib>
-      <AdditionalLibraryDirectories>..\..\..\..\..\opensea-common\Make\VS.2019\opensea-common\$(Platform)\$(Configuration)</AdditionalLibraryDirectories>
-    </Lib>
+    <Lib />
+    <Lib />
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Static-Debug|x64'">
     <ClCompile>
@@ -368,12 +349,8 @@
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
-    <Lib>
-      <AdditionalDependencies>opensea-common.lib</AdditionalDependencies>
-    </Lib>
-    <Lib>
-      <AdditionalLibraryDirectories>..\..\..\..\..\opensea-common\Make\VS.2019\opensea-common\$(Platform)\$(Configuration);..\..\..\..\..\opensea-operations\Make\VS.2019\opensea-operations\$(Platform)\$(Configuration)\LIB</AdditionalLibraryDirectories>
-    </Lib>
+    <Lib />
+    <Lib />
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <ClCompile>
@@ -392,12 +369,8 @@
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
     </Link>
-    <Lib>
-      <AdditionalDependencies>opensea-common.lib</AdditionalDependencies>
-    </Lib>
-    <Lib>
-      <AdditionalLibraryDirectories>..\..\..\..\..\opensea-common\Make\VS.2019\opensea-common\$(Platform)\$(Configuration);..\..\..\..\..\opensea-operations\Make\VS.2019\opensea-operations\$(Platform)\$(Configuration)\LIB</AdditionalLibraryDirectories>
-    </Lib>
+    <Lib />
+    <Lib />
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|ARM'">
     <ClCompile>
@@ -416,12 +389,8 @@
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
     </Link>
-    <Lib>
-      <AdditionalDependencies>opensea-common.lib</AdditionalDependencies>
-    </Lib>
-    <Lib>
-      <AdditionalLibraryDirectories>..\..\..\..\..\opensea-common\Make\VS.2019\opensea-common\$(Platform)\$(Configuration);..\..\..\..\..\opensea-operations\Make\VS.2019\opensea-operations\$(Platform)\$(Configuration)\LIB</AdditionalLibraryDirectories>
-    </Lib>
+    <Lib />
+    <Lib />
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Static-Release|Win32'">
     <ClCompile>
@@ -441,12 +410,8 @@
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
     </Link>
-    <Lib>
-      <AdditionalDependencies>opensea-common.lib</AdditionalDependencies>
-    </Lib>
-    <Lib>
-      <AdditionalLibraryDirectories>..\..\..\..\..\opensea-common\Make\VS.2019\opensea-common\$(Platform)\$(Configuration);..\..\..\..\..\opensea-operations\Make\VS.2019\opensea-operations\$(Platform)\$(Configuration)\LIB</AdditionalLibraryDirectories>
-    </Lib>
+    <Lib />
+    <Lib />
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Static-Release|ARM'">
     <ClCompile>
@@ -466,12 +431,8 @@
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
     </Link>
-    <Lib>
-      <AdditionalDependencies>opensea-common.lib</AdditionalDependencies>
-    </Lib>
-    <Lib>
-      <AdditionalLibraryDirectories>..\..\..\..\..\opensea-common\Make\VS.2019\opensea-common\$(Platform)\$(Configuration);..\..\..\..\..\opensea-operations\Make\VS.2019\opensea-operations\$(Platform)\$(Configuration)\LIB</AdditionalLibraryDirectories>
-    </Lib>
+    <Lib />
+    <Lib />
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
@@ -490,12 +451,8 @@
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
     </Link>
-    <Lib>
-      <AdditionalDependencies>opensea-common.lib</AdditionalDependencies>
-    </Lib>
-    <Lib>
-      <AdditionalLibraryDirectories>..\..\..\..\..\opensea-common\Make\VS.2019\opensea-common\$(Platform)\$(Configuration);..\..\..\..\..\opensea-operations\Make\VS.2019\opensea-operations\$(Platform)\$(Configuration)\LIB</AdditionalLibraryDirectories>
-    </Lib>
+    <Lib />
+    <Lib />
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Static-Release|x64'">
     <ClCompile>
@@ -508,6 +465,7 @@
       <AdditionalIncludeDirectories>..\..\..\..\include;..\..\..\..\..\libjson;..\..\..\..\..\opensea-common\include;..\..\..\..\..\opensea-parser\include;..\..\..\..\..\opensea-parser\include\Seagate</AdditionalIncludeDirectories>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <DebugInformationFormat>None</DebugInformationFormat>
+      <AdditionalOptions>/Zc:__cplusplus</AdditionalOptions>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -515,10 +473,7 @@
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
     </Link>
-    <Lib>
-      <AdditionalDependencies>opensea-common.lib</AdditionalDependencies>
-      <AdditionalLibraryDirectories>..\..\..\..\..\opensea-common\Make\VS.2019\opensea-common\$(Platform)\$(Configuration);..\..\..\..\..\opensea-operations\Make\VS.2019\opensea-operations\$(Platform)\$(Configuration)\LIB</AdditionalLibraryDirectories>
-    </Lib>
+    <Lib />
   </ItemDefinitionGroup>
   <ItemGroup>
     <Text Include="ReadMe.txt" />
@@ -560,8 +515,8 @@
     <ClInclude Include="..\..\..\..\include\Opensea_Parser_Version.h" />
     <ClInclude Include="..\..\..\..\include\Seagate\Ata_Farm_Types.h" />
     <ClInclude Include="..\..\..\..\include\Seagate\CAta_Farm_Log.h" />
-    <ClInclude Include="..\..\..\..\include\Seagate\CFARM_Combine.h" />
     <ClInclude Include="..\..\..\..\include\Seagate\CFARM_Log.h" />
+    <ClInclude Include="..\..\..\..\include\Seagate\CFARM_Combine.h" />
     <ClInclude Include="..\..\..\..\include\Seagate\CFARM_WLM_Log.h" />
     <ClInclude Include="..\..\..\..\include\Seagate\CScsi_Farm_Log.h" />
     <ClInclude Include="..\..\..\..\include\Seagate\Farm_Common.h" />
@@ -603,8 +558,8 @@
     <ClCompile Include="..\..\..\..\src\CScsi_Zoned_Device_Statistics_Log.cpp" />
     <ClCompile Include="..\..\..\..\src\Opensea_Parser_Helper.cpp" />
     <ClCompile Include="..\..\..\..\src\Seagate\CAta_Farm_Log.cpp" />
-    <ClCompile Include="..\..\..\..\src\Seagate\CFARM_Combine.cpp" />
     <ClCompile Include="..\..\..\..\src\Seagate\CFARM_Log.cpp" />
+    <ClCompile Include="..\..\..\..\src\Seagate\CFARM_Combine.cpp" />
     <ClCompile Include="..\..\..\..\src\Seagate\CFARM_WLM_Log.cpp" />
     <ClCompile Include="..\..\..\..\src\Seagate\CScsi_Farm_Log.cpp" />
     <ClCompile Include="..\..\..\..\src\Seagate\Farm_Common.cpp" />

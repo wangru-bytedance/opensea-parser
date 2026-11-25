@@ -2,7 +2,7 @@
 //
 // Do NOT modify or remove this copyright and license
 //
-// Copyright (c) 2014 - 2023 Seagate Technology LLC and/or its Affiliates
+// Copyright (c) 2014 - 2026 Seagate Technology LLC and/or its Affiliates
 //
 // This software is subject to the terms of the Mozilla Public
 // License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -13,8 +13,10 @@
 // \file CScsi_Background_Scan_Log.h  Definition of Background Scan Log Page
 #pragma once
 #include <string>
-#include "common.h"
+#include "common_types.h"
+#include "bit_manip.h"
 #include "libjson.h"
+#include <vector>
 #include "Opensea_Parser_Helper.h"
 
 namespace opensea_parser {
@@ -64,14 +66,14 @@ namespace opensea_parser {
 	{
 	private:
 	protected:
-		uint8_t						*pData;						//<! pointer to the data
+		std::vector<uint8_t>        v_Data;                     //!< vector for holding the buffer data
 		std::string					m_ScanName;					//<! class name	
 		eReturnValues				m_ScanStatus;			    //<! status of the class
 		uint16_t					m_PageLength;				//<! length of the page
 		size_t						m_bufferLength;			    //<! length of the buffer from reading in the log
 		sScanStatusParams			*m_ScanParam;				//<! scan status parameters
 		sScanFindingsParams			*m_defect;					//<! finding of defect structure
-        sBackgroundScanParamHeader  *m_ParamHeader;              //<! for other param codes
+        sBackgroundScanParamHeader  *m_ParamHeader;             //<! for other param codes
 
 		void get_Scan_Defect_Status_Description(std::string *defect);
 		void get_Scan_Status_Description(std::string *scan);
@@ -81,7 +83,7 @@ namespace opensea_parser {
 		eReturnValues get_Scan_Data(JSONNODE *masterData);
 	public:
 		CScsiScanLog();
-		CScsiScanLog(uint8_t * buffer, size_t bufferSize, uint16_t pageLength);
+		explicit CScsiScanLog(uint8_t * buffer, size_t bufferSize, uint16_t pageLength);
 		virtual ~CScsiScanLog();
 		virtual eReturnValues get_Log_Status() { return m_ScanStatus; };
 		virtual eReturnValues parse_Background_Scan_Log(JSONNODE *masterData) { return get_Scan_Data(masterData); };

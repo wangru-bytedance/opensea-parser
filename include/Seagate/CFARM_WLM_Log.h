@@ -19,7 +19,7 @@
 
 #pragma once
 #include <vector>
-#include "common.h"
+#include "common_types.h"
 #include "CLog.h"
 #include "libjson.h"
 #include "Farm_Helper.h"
@@ -91,12 +91,15 @@ namespace opensea_parser {
         eReturnValues               m_WLMstatus;                                    //<! holds the status so 
         sWLMDataHeader              m_DataHeader;                                   //<! Data Header sturcture
         sWLMDataHeader              *m_DataHeaderPTR;
+        std::string                 m_validationError;
+        size_t                      m_validationOffset = 0;
 
 
         
         eReturnValues parse_WLM_Summary(JSONNODE *masterData);
         eReturnValues print_Empty_WLM_Log(JSONNODE *wlmJson);
         eReturnValues print_Summary_Log(size_t* offset, JSONNODE *wlm);
+        void print_Validation_Error(JSONNODE* wlm);
 
         bool is_FARM(uint32_t signature);
         bool validate_WLM();
@@ -113,9 +116,9 @@ namespace opensea_parser {
 
         eReturnValues get_WLM_Status()
         {
-            if (VERBOSITY_COMMAND_VERBOSE <= g_verbosity)
+            if (eVerbosityLevels::VERBOSITY_COMMAND_VERBOSE <= g_verbosity)
             {
-                printf("\nstatus = %d", m_WLMstatus);
+                printf("\nstatus = %d", static_cast<int>(m_WLMstatus));
             }
             return m_WLMstatus;
         };

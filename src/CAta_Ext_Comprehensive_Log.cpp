@@ -3,7 +3,7 @@
 //
 // Do NOT modify or remove this copyright and license
 //
-// Copyright (c) 2015 - 2023 Seagate Technology LLC and/or its Affiliates, All Rights Reserved
+// Copyright (c) 2014 - 2026 Seagate Technology LLC and/or its Affiliates
 //
 // This software is subject to the terms of the Mozilla Public
 // License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -26,10 +26,10 @@ using namespace opensea_parser;
 //
 //---------------------------------------------------------------------------
 CExtComp::CExtComp()
-    :pData()
+    :v_Buff()
     , m_logSize(0)
     , m_name("Ext Comp Log")
-    , m_status(IN_PROGRESS)
+    , m_status(eReturnValues::IN_PROGRESS)
     , m_fileName(false)
 {
 
@@ -44,21 +44,23 @@ CExtComp::CExtComp()
 //
 //---------------------------------------------------------------------------
 CExtComp::CExtComp(uint8_t *buffer, size_t logSize, JSONNODE *masterData)
-    :pData(buffer)
+    :v_Buff()
     , m_logSize(logSize)
     , m_name("Ext Comp Log")
-    , m_status(IN_PROGRESS)
+    , m_status(eReturnValues::IN_PROGRESS)
     , m_fileName(false)
 {
 
-    if (buffer != NULL)                           // if the buffer is null then exit something did go right
+    if (buffer != M_NULLPTR)                           // if the buffer is null then exit something did go right
     {
-        m_status = IN_PROGRESS;
+        v_Buff.resize(m_logSize);  // Resize vector before copying!
+        safe_memmove(v_Buff.data(),logSize, buffer, logSize);
+        m_status = eReturnValues::IN_PROGRESS;
         m_status = parse_Ext_Comp_Log(masterData);
     }
     else
     {
-        m_status = FAILURE;
+        m_status = eReturnValues::FAILURE;
     }
 
 }
@@ -71,44 +73,38 @@ CExtComp::CExtComp(uint8_t *buffer, size_t logSize, JSONNODE *masterData)
 //
 //
 //---------------------------------------------------------------------------
-CExtComp::CExtComp(const std::string &fileName, JSONNODE *masterData)
-    :pData()
+CExtComp::CExtComp(const std::string &fileName)
+    :v_Buff()
     , m_logSize()
     , m_name("Ext Comp Log")
-    , m_status(IN_PROGRESS)
+    , m_status(eReturnValues::IN_PROGRESS)
     , m_fileName(true)
 {
     CLog *cCLog;
-    cCLog = new CLog(fileName);
-    if (cCLog->get_Log_Status() == SUCCESS)
+    cCLog = new CLog(fileName,true);
+    if (cCLog->get_Log_Status() == eReturnValues::SUCCESS)
     {
-        if (cCLog->get_Buffer() != NULL)
+        cCLog->get_vBuffer(v_Buff);
+        if (v_Buff.size() != 0)
         {
             m_logSize = cCLog->get_Size();
-            pData = new uint8_t[m_logSize];								// new a buffer to the point				
-#ifndef __STDC_SECURE_LIB__
-            memcpy(pData, cCLog->get_Buffer(), m_logSize);
-#else
-            memcpy_s(pData, m_logSize, cCLog->get_Buffer(), m_logSize);// copy the buffer data to the class member pBuf
-#endif
+
             sLogPageStruct *idCheck;
-            idCheck = reinterpret_cast<sLogPageStruct*>(&pData[0]);
+            idCheck = reinterpret_cast<sLogPageStruct*>(&v_Buff.at(0));
             byte_Swap_16(&idCheck->pageLength);
             if (IsScsiLogPage(idCheck->pageLength, idCheck->pageCode) == false)
             {
                 byte_Swap_16(&idCheck->pageLength);  // now that we know it's not scsi we need to flip the bytes back
-                m_status = parse_Ext_Comp_Log(masterData);
-                m_status = SUCCESS;
+                m_status = eReturnValues::SUCCESS;
             }
             else
             {
-                m_status = BAD_PARAMETER;
+                m_status = eReturnValues::BAD_PARAMETER;
             }
         }
         else
         {
-
-            m_status = FAILURE;
+            m_status = eReturnValues::FAILURE;
         }
     }
     else
@@ -128,13 +124,7 @@ CExtComp::CExtComp(const std::string &fileName, JSONNODE *masterData)
 //---------------------------------------------------------------------------
 CExtComp::~CExtComp()
 {
-    if (m_fileName)
-    {
-        if (pData != NULL)
-        {
-            delete[] pData;
-        }
-    }
+
 }
 //-----------------------------------------------------------------------------
 //
@@ -148,7 +138,7 @@ CExtComp::~CExtComp()
 //! \param state = parsed out state
 //
 //  Exit:
-//!   \return eReturnValues success
+//!   \return eReturnValues eReturnValues::SUCCESS
 //
 //---------------------------------------------------------------------------
 eReturnValues CExtComp::get_State_Meaning(std::string *stateMeaning, uint8_t state)
@@ -183,7 +173,7 @@ eReturnValues CExtComp::get_State_Meaning(std::string *stateMeaning, uint8_t sta
     }
 
     }
-    return SUCCESS;
+    return eReturnValues::SUCCESS;
 }
 //-----------------------------------------------------------------------------
 //
@@ -196,7 +186,7 @@ eReturnValues CExtComp::get_State_Meaning(std::string *stateMeaning, uint8_t sta
 //! \param mansterData = Json Node that holds all of the data 
 //
 //  Exit:
-//!   \return eReturnValues success
+//!   \return eReturnValues eReturnValues::SUCCESS
 //
 //---------------------------------------------------------------------------
 eReturnValues CExtComp::parse_Ext_Comp_Structure(uint32_t structNumber, uint32_t sector, JSONNODE *structureData)
@@ -210,7 +200,6 @@ eReturnValues CExtComp::parse_Ext_Comp_Structure(uint32_t structNumber, uint32_t
     uint16_t hiLBA = 0;
     uint8_t  deviceHead = 0;
     uint8_t  commandField = 0;
-    //uint8_t  reserved = 0;
     uint32_t timeStamp = 0;
     uint8_t  errorField = 0;
     uint8_t  status = 0;
@@ -229,15 +218,20 @@ eReturnValues CExtComp::parse_Ext_Comp_Structure(uint32_t structNumber, uint32_t
 
 	if (sector == 0)
 	{
-		json_push_back(EComp, json_new_i("Ext Comp SMART Log Version", static_cast<int>(pData[0])));
+		json_push_back(EComp, json_new_i("Ext Comp SMART Log Version", static_cast<int>(v_Buff[0])));
 
-		COMPIndex = pData[2];
+		COMPIndex = v_Buff.at(2);
 		json_push_back(EComp, json_new_i("Ext Comp Log Index", static_cast<int>(COMPIndex)));
 
-		deviceErrorCount = pData[500];
+		deviceErrorCount = v_Buff.at(500);
 		json_push_back(EComp, json_new_i("Ext Comp Device Error Count", static_cast<int>(deviceErrorCount)));
 	}
     temp.str("");temp.clear();
+    // Add bounds validation at the start
+    const size_t requiredSize = sector + 4 + (4 * (5 * 18 + 34));  // Calculate required buffer size
+    if (v_Buff.size() < requiredSize) {
+        return eReturnValues::INVALID_LENGTH;
+    }
     for (uint16_t z = 1; z < 5; z++)
     {
         temp << "Opcode Content " << std::dec << (z + (structNumber * 4));
@@ -249,16 +243,15 @@ eReturnValues CExtComp::parse_Ext_Comp_Structure(uint32_t structNumber, uint32_t
             temp << "Command Data Structure " << std::dec << cmddata;
 			JSONNODE *cmdNode = json_new(JSON_NODE);
 			json_set_name(cmdNode, temp.str().c_str());
-            deviceControl = pData[wOffset];
-            featureField = pData[wOffset + 1];
-            countField = pData[wOffset + 3];
-            lowLBA = pData[wOffset + 5];
-            midLBA = pData[wOffset + 7];
-            hiLBA = pData[wOffset + 9];
-            deviceHead = pData[wOffset + 11];
-            commandField = pData[wOffset + 12];
-            //reserved = pData[wOffset + 13];
-            timeStamp = pData[wOffset + 14];
+            deviceControl = v_Buff.at(wOffset);
+            featureField = v_Buff.at(wOffset + 1);
+            countField = v_Buff.at(wOffset + 3);
+            lowLBA = v_Buff.at(wOffset + 5);
+            midLBA = v_Buff.at(wOffset + 7);
+            hiLBA = v_Buff.at(wOffset + 9);
+            deviceHead = v_Buff.at(wOffset + 11);
+            commandField = v_Buff.at(wOffset + 12);
+            timeStamp = v_Buff.at(wOffset + 14);
             word_Swap_32(&timeStamp);
             wOffset += 18;
 #if defined _DEBUG
@@ -306,17 +299,15 @@ eReturnValues CExtComp::parse_Ext_Comp_Structure(uint32_t structNumber, uint32_t
             json_push_back(opcode, cmdNode);
 
         }
-        //printf("offset = %d \n",wOffset);
-        //reserved = pData[wOffset];
-        errorField = pData[wOffset + 1];
-        countField = pData[wOffset + 3];
-        lowLBA = pData[wOffset + 5];
-        midLBA = pData[wOffset + 7];
-        hiLBA = pData[wOffset + 9];
-        deviceHead = pData[wOffset + 10];
-        status = pData[wOffset + 11];
-        state = pData[wOffset + 30];
-        lifeTime = pData[wOffset + 32];
+        errorField = v_Buff.at(wOffset + 1);
+        countField = v_Buff.at(wOffset + 3);
+        lowLBA = v_Buff.at(wOffset + 5);
+        midLBA = v_Buff.at(wOffset + 7);
+        hiLBA = v_Buff.at(wOffset + 9);
+        deviceHead = v_Buff.at(wOffset + 10);
+        status = v_Buff.at(wOffset + 11);
+        state = v_Buff.at(wOffset + 30);
+        lifeTime = v_Buff.at(wOffset + 32);
         LBA = M_WordsTo8ByteValue(0, hiLBA, midLBA, lowLBA);
         byte_Swap_16(&lifeTime);
         wOffset += 34;
@@ -361,7 +352,7 @@ eReturnValues CExtComp::parse_Ext_Comp_Structure(uint32_t structNumber, uint32_t
     
     json_push_back(structureData, EComp);
 
-    return SUCCESS;
+    return eReturnValues::SUCCESS;
 }
 //-----------------------------------------------------------------------------
 //
@@ -374,12 +365,12 @@ eReturnValues CExtComp::parse_Ext_Comp_Structure(uint32_t structNumber, uint32_t
 //! \param mansterData = Json Node that holds all of the data 
 //
 //  Exit:
-//!   \return eReturnValues success
+//!   \return eReturnValues eReturnValues::SUCCESS
 //
 //---------------------------------------------------------------------------
 eReturnValues CExtComp::parse_Ext_Comp_Log(JSONNODE *masterData)
 {
-    eReturnValues retStatus = IN_PROGRESS;
+    eReturnValues retStatus = eReturnValues::IN_PROGRESS;
     uint32_t sectorNumber = 0;
     JSONNODE *ExtCompData = json_new(JSON_NODE);
     json_set_name(ExtCompData, "Extended Comperhensive SMART Error Log");
@@ -387,13 +378,14 @@ eReturnValues CExtComp::parse_Ext_Comp_Log(JSONNODE *masterData)
     {
         // call the structure for each sector(512) of data
         retStatus = parse_Ext_Comp_Structure(sectorNumber, sector, ExtCompData);
-        if (retStatus != SUCCESS)
+        if (retStatus != eReturnValues::SUCCESS)
         {
             break;
         }
         sectorNumber++;
     }
     json_push_back(masterData, ExtCompData);
-    return retStatus;
+    m_status = retStatus;
+    return  retStatus;
 }
 

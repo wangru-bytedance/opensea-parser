@@ -15,8 +15,43 @@
 // \brief Defines the function calls and structures for parsing Seagate combine FARM logs SAS and SATA
 
 #include "CFARM_Combine.h"
+#include "CFARM_Log.h"
+#include <algorithm>
+#include <cstring>
 
 using namespace opensea_parser;
+
+namespace
+{
+	const size_t COMBINED_HEADER_SIZE = 256;
+	const size_t COMBINED_ENTRY_SIZE = 32;
+
+	// The enclosing header, directory entry or frame is checked before use.
+	uint64_t combined_LE(const uint8_t* data, size_t offset, size_t size)
+	{
+		uint64_t value = 0;
+		for (size_t i = 0; i < size; ++i)
+		{
+			value |= static_cast<uint64_t>(data[offset + i]) << (8 * i);
+		}
+		return value;
+	}
+
+	std::string combined_String(const uint8_t* data, size_t offset, size_t size)
+	{
+		std::string value(reinterpret_cast<const char*>(data + offset), size);
+		const size_t terminator = value.find('\0');
+		if (terminator != std::string::npos)
+		{
+			value.resize(terminator);
+		}
+		while (!value.empty() && value.back() == ' ')
+		{
+			value.pop_back();
+		}
+		return value;
+	}
+}
 //-----------------------------------------------------------------------------
 //
 //! \fn CFarm_Combine::CFarm_Combine()
@@ -34,13 +69,15 @@ CFarm_Combine::CFarm_Combine()
 	:CFarmCommon()
 	, bufferData()
 	, m_LogSize(0)
-	, m_status(IN_PROGRESS)
+	, m_status(eReturnValues::IN_PROGRESS)
 	, m_isScsi(false)
 	, m_combine_isScsi(false)
 	, m_isComboLog(false)
 	, m_showStatus(false)
+	, m_showStatic(false)
 	, m_version(0)
 	, m_maxLogSize(0)
+	, m_entrySize(COMBINED_ENTRY_SIZE)
 {
 
 }
@@ -61,13 +98,15 @@ CFarm_Combine::CFarm_Combine(bool showStatus)
 	:CFarmCommon()
 	, bufferData()
 	, m_LogSize(0)
-	, m_status(IN_PROGRESS)
+	, m_status(eReturnValues::IN_PROGRESS)
 	, m_isScsi(false)
 	, m_combine_isScsi(false)
 	, m_isComboLog(false)
 	, m_showStatus(showStatus)
+	, m_showStatic(false)
 	, m_version(0)
 	, m_maxLogSize(0)
+	, m_entrySize(COMBINED_ENTRY_SIZE)
 {
 
 }
@@ -84,17 +123,19 @@ CFarm_Combine::CFarm_Combine(bool showStatus)
 //!   \return 
 //
 //---------------------------------------------------------------------------
-CFarm_Combine::CFarm_Combine(uint8_t* buffer, size_t bufferSize, bool showStatus)
+CFarm_Combine::CFarm_Combine(uint8_t* buffer, size_t bufferSize, bool showStatus, bool showStatic)
 	:CFarmCommon()
 	, bufferData(buffer)
 	, m_LogSize(bufferSize)
-	, m_status(IN_PROGRESS)
+	, m_status(eReturnValues::IN_PROGRESS)
 	, m_isScsi(false)
 	, m_combine_isScsi(false)
 	, m_isComboLog(false)
 	, m_showStatus(showStatus)
+	, m_showStatic(showStatic)
 	, m_version(0)
 	, m_maxLogSize(0)
+	, m_entrySize(COMBINED_ENTRY_SIZE)
 {
 	is_Combo_Log();
 	combine_Device_Scsi();
@@ -114,10 +155,7 @@ CFarm_Combine::CFarm_Combine(uint8_t* buffer, size_t bufferSize, bool showStatus
 //---------------------------------------------------------------------------
 CFarm_Combine::~CFarm_Combine()
 {
-	if (bufferData != NULL)
-	{
-		//delete[] bufferData;
-	}
+	// bufferData is borrowed from the caller.
 }
 //-----------------------------------------------------------------------------
 //
@@ -156,31 +194,9 @@ void CFarm_Combine::setCombine(uint8_t* buffer, size_t bufferSize)
 //---------------------------------------------------------------------------
 void CFarm_Combine::combine_Device_Scsi()
 {
-	uint32_t device = M_BytesTo4ByteValue(bufferData[0x18], bufferData[0x19], bufferData[0x1a], bufferData[0x1b]);
-	if (device == FARMSAS || device == FARMSASCOMBO)
-	{
-		m_combine_isScsi = true;
-	}
-	else
-	{
-		device = M_BytesTo4ByteValue(bufferData[0x81], bufferData[0x82], bufferData[0x83], bufferData[0x84]);
-		if (M_GETBITRANGE(bufferData[0], 5, 0) == 0x3D)
-		{
-			if (bufferData[1] == 03 || bufferData[1] == 04 || (bufferData[1] >= FARM_TIME_SERIES_0 && bufferData[1] <= FARM_TEMP_TRIGGER_LOG_PAGE))
-			{
-				m_isScsi = true;
-			}
-		}
-		// check for sas log page being addded
-		else if (device == FARMSAS || device == FARMSASCOMBO)
-		{
-			m_combine_isScsi = true;
-		}
-		else
-		{
-			m_combine_isScsi = false;
-		}
-	}
+	is_Device_Scsi();
+	m_combine_isScsi = bufferData != M_NULLPTR && m_LogSize >= 28 &&
+		combined_String(bufferData, 24, 4) == "SAS";
 }
 //-----------------------------------------------------------------------------
 //
@@ -197,17 +213,8 @@ void CFarm_Combine::combine_Device_Scsi()
 //---------------------------------------------------------------------------
 void CFarm_Combine::is_Device_Scsi()
 {
-	if (bufferData != NULL)
-	{
-		if (M_GETBITRANGE(bufferData[0], 5, 0) == 0x3D)
-		{
-			if (bufferData[1] == 03 || bufferData[1] == 04 || (bufferData[1] >= FARM_TIME_SERIES_0 && bufferData[1] <= FARM_TEMP_TRIGGER_LOG_PAGE))
-			{
-				m_isScsi = true;
-			}
-		}
-	}
-	m_isScsi = false;
+	m_isScsi = bufferData != M_NULLPTR && m_LogSize >= 2 &&
+		CFarmCommon::is_Device_Scsi(bufferData[0], bufferData[1]);
 }
 //-----------------------------------------------------------------------------
 //
@@ -224,16 +231,8 @@ void CFarm_Combine::is_Device_Scsi()
 //---------------------------------------------------------------------------
 void CFarm_Combine::is_Combo_Log()
 {
-	uint64_t stx = M_BytesTo8ByteValue(bufferData[0], bufferData[1], bufferData[2], bufferData[3], bufferData[4], bufferData[5], bufferData[6], bufferData[7]);
-	uint64_t combo = M_BytesTo8ByteValue(bufferData[8], bufferData[9], bufferData[10], bufferData[11], bufferData[12], bufferData[13], bufferData[14], bufferData[15]);
-	if (stx == STX_FARM && combo == STX_COMBO)
-	{
-		m_isComboLog = true;
-	}
-	else
-	{
-		m_isComboLog = false;
-	}
+	m_isComboLog = bufferData != M_NULLPTR && m_LogSize >= 16 &&
+		std::memcmp(bufferData, "STX_FARM_COMBINE", 16) == 0;
 }
 //-----------------------------------------------------------------------------
 //
@@ -251,13 +250,16 @@ void CFarm_Combine::is_Combo_Log()
 //---------------------------------------------------------------------------
 uint64_t CFarm_Combine::get_Log_Size(size_t offset)
 {
-#define CURENTEMPTYLOGSIZE 0x00FFFFFFFFFFFFFF
-	uint64_t currentLogSize = (M_BytesTo8ByteValue(bufferData[offset + 39], bufferData[offset + 38], bufferData[offset + 37], bufferData[offset + 36], bufferData[offset + 35], bufferData[offset + 34], bufferData[offset + 33], bufferData[offset + 32]) & UINT64_C(0x00FFFFFFFFFFFFFF));
-	if (currentLogSize == CURENTEMPTYLOGSIZE || currentLogSize == PADDINGSIZE)
+	if (bufferData == M_NULLPTR || offset > m_LogSize || m_LogSize - offset < 40)
 	{
-		currentLogSize = ATALOGSIZE;
+		return 0;
 	}
-	return currentLogSize;
+	const uint64_t signature = combined_LE(bufferData, offset, 8) & UINT64_C(0x00FFFFFFFFFFFFFF);
+	if (signature == FARMEMPTYSIGNATURE || signature == FARMPADDINGSIGNATURE)
+	{
+		return ATALOGSIZE;
+	}
+	return combined_LE(bufferData, offset + 32, 8) & UINT64_C(0x00FFFFFFFFFFFFFF);
 }
 //-----------------------------------------------------------------------------
 //
@@ -401,52 +403,12 @@ void CFarm_Combine::get_Sticky_Frame_Type(std::string* reason, uint8_t frame)
 //---------------------------------------------------------------------------
 void CFarm_Combine::get_Header_Info(sStringIdentifyData* headerInfo)
 {
-	
-#define VERSION_OFFSET 16
-#define DEVICE_OFFSET 24
-#define MODELNUMBER_OFFSET 32
-#define SERIALNUMBER_OFFSET 80
-#define FIRMWARE_OFFSET 104
-
-	uint64_t offset = MODELNUMBER_OFFSET;							//!< init the offset to MODELNUMBER_OFFSET for later
-
-	m_version = M_BytesTo8ByteValue(bufferData[VERSION_OFFSET], bufferData[VERSION_OFFSET + 1], bufferData[VERSION_OFFSET + 2], bufferData[VERSION_OFFSET + 3], bufferData[VERSION_OFFSET + 4], bufferData[VERSION_OFFSET + 5], bufferData[VERSION_OFFSET + 6], bufferData[VERSION_OFFSET + 7]);
-	uint32_t devInt = M_BytesTo4ByteValue(bufferData[DEVICE_OFFSET + 3], bufferData[DEVICE_OFFSET + 2], bufferData[DEVICE_OFFSET + 1], bufferData[DEVICE_OFFSET]);
-	create_Device_Interface_String_Flat(headerInfo->deviceInterface, &devInt);
-	if (VERBOSITY_COMMAND_VERBOSE <= g_verbosity)
-	{
-		printf("Interface Type:				%s \n", headerInfo->deviceInterface.c_str());
-	}
-
-	uint64_t modelNumber = M_BytesTo8ByteValue(bufferData[offset + 7], bufferData[offset + 6], bufferData[offset + 5], bufferData[offset + 4], bufferData[offset + 3], bufferData[offset + 2], bufferData[offset + 1], bufferData[offset]);
-	offset = offset + 8;
-	uint64_t modelNumber2 = M_BytesTo8ByteValue(bufferData[offset + 7], bufferData[offset + 6], bufferData[offset + 5], bufferData[offset + 4], bufferData[offset + 3], bufferData[offset + 2], bufferData[offset + 1], bufferData[offset]);
-	create_Model_Number_String_Flat(headerInfo->modelNumber, &modelNumber);
-	create_Model_Number_String_Flat(headerInfo->modelNumber, &modelNumber2);
-	if (VERBOSITY_COMMAND_VERBOSE <= g_verbosity)
-	{
-		printf("Model Number:				%s \n", headerInfo->modelNumber.c_str());
-	}
-
-	offset = SERIALNUMBER_OFFSET;
-	uint64_t serialNumber = M_BytesTo8ByteValue(bufferData[offset + 7], bufferData[offset + 6], bufferData[offset + 5], bufferData[offset + 4], bufferData[offset + 3], bufferData[offset + 2], bufferData[offset + 1], bufferData[offset]);
-	offset = offset + 8;
-	uint64_t serialNumber2 = M_BytesTo8ByteValue(bufferData[offset + 7], bufferData[offset + 6], bufferData[offset + 5], bufferData[offset + 4], bufferData[offset + 3], bufferData[offset + 2], bufferData[offset + 1], bufferData[offset]);
-	create_Flat_SN(headerInfo->serialNumber, &serialNumber, &serialNumber2);
-	if (VERBOSITY_COMMAND_VERBOSE <= g_verbosity)
-	{
-		printf("Serial Number:				%s \n", headerInfo->serialNumber.c_str());
-	}
-
-	offset = FIRMWARE_OFFSET;
-	uint32_t firwareStr = M_BytesTo4ByteValue(bufferData[offset + 3], bufferData[offset + 2], bufferData[offset + 1], bufferData[offset]);
-	offset += 4;
-	uint32_t firwareStr2 = M_BytesTo4ByteValue(bufferData[offset +3], bufferData[offset + 2], bufferData[offset + 1], bufferData[offset]);
-	create_Firmware_String_Flat(headerInfo->firmwareRev, &firwareStr, &firwareStr2);
-	if (VERBOSITY_COMMAND_VERBOSE <= g_verbosity)
-	{
-		printf("Firmware Version:			%s \n", headerInfo->firmwareRev.c_str());
-	}
+	// Match the writer's complete string widths and little-endian version words.
+	m_version = combined_LE(bufferData, 16, 8);
+	headerInfo->deviceInterface = combined_String(bufferData, 24, 4);
+	headerInfo->modelNumber = combined_String(bufferData, 32, 40);
+	headerInfo->serialNumber = combined_String(bufferData, 80, 20);
+	headerInfo->firmwareRev = combined_String(bufferData, 104, 8);
 }
 //-----------------------------------------------------------------------------
 //
@@ -467,16 +429,22 @@ void CFarm_Combine::get_Header_Info(sStringIdentifyData* headerInfo)
 void CFarm_Combine::get_Data_Set(uint16_t DataSetNumber)
 {
 #define DATAOFFSET  0x100
+	vdataSetInfo.clear();
 	vdataSetInfo.reserve(DataSetNumber);
-	uint32_t offset = DATAOFFSET;
+	size_t offset = DATAOFFSET;
 	for (uint16_t i = 0; i < DataSetNumber; i++)
 	{
-
 		sComboDataSet set;
-		set = *(reinterpret_cast<sComboDataSet*>(&bufferData[offset]));
-		byte_Swap_64(&set.dataSetType);
+		for (size_t byte = 0; byte < 8; ++byte)
+		{
+			set.dataSetType = (set.dataSetType << 8) | bufferData[offset + byte];
+		}
+		set.location = static_cast<uint32_t>(combined_LE(bufferData, offset + 8, 4));
+		set.dataSize = static_cast<uint32_t>(combined_LE(bufferData, offset + 12, 4));
+		set.startTime = combined_LE(bufferData, offset + 16, 8);
+		set.endTime = combined_LE(bufferData, offset + 24, 8);
 		vdataSetInfo.push_back(set);
-		offset += sizeof(sComboDataSet);
+		offset += m_entrySize;
 	}
 }
 //-----------------------------------------------------------------------------
@@ -497,101 +465,95 @@ void CFarm_Combine::get_Data_Set(uint16_t DataSetNumber)
 //---------------------------------------------------------------------------
 void CFarm_Combine::parse_FARM_Logs(size_t offset, size_t logSize, uint64_t dataType, JSONNODE* farmJson)
 {
-	size_t page = 0;
-	for (size_t counter = 0; counter <= logSize;)
+	m_status = eReturnValues::SUCCESS;
+	if (offset > m_LogSize || logSize > m_LogSize - offset)
 	{
+		m_status = eReturnValues::INVALID_LENGTH;
+		return;
+	}
+	const size_t end = offset + logSize;
+	const bool subFrame = is_Subpage_Neeeded(dataType);
+	while (offset < end)
+	{
+		const size_t remaining = end - offset;
+		size_t page = 0;
 		if (m_combine_isScsi)
 		{
-			uint8_t subpage = bufferData[offset + 1];
-			std::ostringstream temp;
-			temp << "Subpage 0x" << std::setw(2) << std::setfill('0') << std::hex << std::uppercase << static_cast<uint16_t> (subpage);
-			JSONNODE* farmInfo = json_new(JSON_NODE);
-			json_set_name(farmInfo, temp.str().c_str());
-
-			CSCSI_Farm_Log* pCFarm;
-			pCFarm = new CSCSI_Farm_Log(&bufferData[offset], logSize, subpage, false, m_showStatus);
-			if (pCFarm->get_Log_Status() == SUCCESS)
+			if (remaining < 4)
 			{
-				page = static_cast<size_t>(pCFarm->get_LogSize()) + 4;      // need add in the param length back in
-				if (page > m_maxLogSize)
-				{
-					m_status = INVALID_LENGTH;
-				}
-				else
-				{
-					pCFarm->print_All_Pages(farmInfo);
-					m_status = SUCCESS;
-				}
+				m_status = eReturnValues::INVALID_LENGTH;
+				return;
 			}
-			else
+			if (!CFarmCommon::is_Device_Scsi(bufferData[offset], bufferData[offset + 1]))
 			{
-				m_status = pCFarm->get_Log_Status();
+				m_status = eReturnValues::VALIDATION_FAILURE;
+				return;
 			}
-			delete(pCFarm);
-			json_push_back(farmJson, farmInfo);
+			page = (static_cast<size_t>(bufferData[offset + 2]) << 8) + bufferData[offset + 3] + 4;
+			if (page < 8 + sizeof(sFarmHeader) || page > remaining)
+			{
+				m_status = eReturnValues::INVALID_LENGTH;
+				return;
+			}
 		}
 		else
 		{
-			CATA_Farm_Log* pCFarm;
-			pCFarm = new CATA_Farm_Log(&bufferData[offset], get_Log_Size(offset), m_showStatus);
-			if (pCFarm->get_Log_Status() == IN_PROGRESS)
+			if (remaining < sizeof(sFarmHeader))
 			{
-				try
-				{
-					bool subFrame = is_Subpage_Neeeded(dataType);  // check to see if the subpage is needed
-
-					JSONNODE* farmInfo;
-					if (!subFrame)
-					{
-						farmInfo = farmJson;
-					}
-					else
-					{
-						std::string reason;
-						farmInfo = json_new(JSON_NODE);
-						json_set_name(farmInfo, reason.c_str());
-					}
-					
-					m_status = pCFarm->parse_Farm_Log();
-					if (m_status == IN_PROGRESS)
-					{
-						page = static_cast<size_t>(pCFarm->get_LogSize());
-						if (page == EMPTYLOGSIZE || page == PADDINGSIZE)
-						{
-							page = m_maxLogSize;
-							pCFarm->print_All_Pages(farmInfo);
-							m_status = SUCCESS;
-						}
-						else if (page > m_maxLogSize)
-						{
-							m_status = INVALID_LENGTH;
-						}
-						else
-						{
-							pCFarm->print_All_Pages(farmInfo);
-							m_status = SUCCESS;
-						}
-					}
-					if (subFrame)
-					{
-						json_push_back(farmJson, farmInfo);
-					}
-				}
-				catch (...)
-				{
-					delete (pCFarm);
-					m_status = MEMORY_FAILURE;
-				}
-
+				m_status = eReturnValues::INVALID_LENGTH;
+				return;
 			}
-			delete (pCFarm);
-			
+			const uint64_t signature = combined_LE(bufferData, offset, 8) & UINT64_C(0x00FFFFFFFFFFFFFF);
+			if (signature == FARMEMPTYSIGNATURE || signature == FARMPADDINGSIGNATURE)
+			{
+				page = ATALOGSIZE;
+			}
+			else
+			{
+				if (signature != FARMSIGNATURE && signature != FACTORYCOPY)
+				{
+					m_status = eReturnValues::VALIDATION_FAILURE;
+					return;
+				}
+				const uint64_t frameSize = get_Log_Size(offset);
+				const uint64_t pageSize = combined_LE(bufferData, offset + 40, 8) & UINT64_C(0x00FFFFFFFFFFFFFF);
+				const uint64_t copies = combined_LE(bufferData, offset + 56, 8) & UINT64_C(0x00FFFFFFFFFFFFFF);
+				const size_t minPageSize = std::max({sizeof(sFarmHeader), sizeof(sDriveInfo),
+					sizeof(sWorkLoadStat), sizeof(sErrorStat), sizeof(sEnvironementStat),
+					sizeof(sAtaReliabilityStat)});
+				// Five pages per copy follow the header. Divide before multiplying.
+				if (frameSize > remaining || pageSize < minPageSize || frameSize / pageSize < 6 ||
+					copies >= (frameSize / pageSize - 1) / 5)
+				{
+					m_status = eReturnValues::INVALID_LENGTH;
+					return;
+				}
+				page = static_cast<size_t>(frameSize);
+			}
 		}
-		counter += page;
-		// check do to buffer padding of zero's
-		if (counter + page > logSize || m_status != SUCCESS)
+		if (page > remaining || (!subFrame && page != remaining))
 		{
-			break;
+			m_status = eReturnValues::INVALID_LENGTH;
+			return;
+		}
+		JSONNODE* farmInfo = (subFrame || m_combine_isScsi) ? json_new(JSON_NODE) : farmJson;
+		if (m_combine_isScsi)
+		{
+			std::ostringstream name;
+			name << "Subpage 0x" << std::hex << std::uppercase << std::setw(2)
+				<< std::setfill('0') << static_cast<unsigned int>(bufferData[offset + 1]);
+			json_set_name(farmInfo, name.str().c_str());
+		}
+		// Current field decoders retain BER fixes and status/static options.
+		CFARMLog log(bufferData + offset, page, m_showStatus, m_showStatic);
+		m_status = log.parse_Device_Farm_Log(farmInfo);
+		if (farmInfo != farmJson)
+		{
+			json_push_back(farmJson, farmInfo);
+		}
+		if (m_status != eReturnValues::SUCCESS)
+		{
+			return;
 		}
 		offset += page;
 	}
@@ -620,9 +582,10 @@ void CFarm_Combine::print_Combine_Log_Header(sStringIdentifyData* headerInfo, JS
 	json_push_back(label, json_new_a("firmware_rev", headerInfo->firmwareRev.c_str()));
 	json_push_back(label, json_new_a("Drive Interface", headerInfo->deviceInterface.c_str()));
 	json_push_back(label, json_new_a("Model Number", headerInfo->modelNumber.c_str()));
-	std::string verStr;
-	create_Version_Number(verStr, m_version);
-	json_push_back(label, json_new_a("FARM Combined version", verStr.c_str()));
+	std::ostringstream version;
+	version << ((m_version >> 48) & 0xFFFF) << "." << ((m_version >> 32) & 0xFFFF)
+		<< "." << ((m_version >> 16) & 0xFFFF);
+	json_push_back(label, json_new_a("FARM Combined version", version.str().c_str()));
 	json_push_back(header, label);
 }
 //-----------------------------------------------------------------------------
@@ -669,6 +632,8 @@ void CFarm_Combine::print_Header_Debug( JSONNODE* labelJson)
 	}
 
 	json_push_back(labelJson, label);
+#else
+	(void)labelJson;
 #endif
 }
 //-----------------------------------------------------------------------------
@@ -687,58 +652,107 @@ void CFarm_Combine::print_Header_Debug( JSONNODE* labelJson)
 //---------------------------------------------------------------------------
 eReturnValues CFarm_Combine::combo_Parsing(JSONNODE* masterJson)
 {
-	eReturnValues retStatus = IN_PROGRESS;
-	// get the drives identify data from the log
-	sStringIdentifyData* headerInfo = new sStringIdentifyData();
-	get_Header_Info(headerInfo);
-	print_Combine_Log_Header(headerInfo, masterJson);
-	
-	// get the number of data sets in the log
-	uint16_t dataSets = M_BytesTo2ByteValue(bufferData[253], bufferData[252]);
-	get_Data_Set(dataSets);
-	//set the max logs size from the data set info 
-	m_maxLogSize = vdataSetInfo.at(0).dataSize;
-
-	// if debug then print the header information - location, time, size.
-	print_Header_Debug(masterJson);	
-
-	if (dataSets > 1)
+	if (masterJson == M_NULLPTR || bufferData == M_NULLPTR)
 	{
-		for (std::vector<sComboDataSet>::iterator dataItr = vdataSetInfo.begin(); dataItr != vdataSetInfo.end(); ++dataItr)
-		{
-			if (dataItr->dataSetType == FARM_TIME || dataItr->dataSetType == FARM_LONG_SAVE || dataItr->dataSetType == FARM_STICKY)
-			{
-				JSONNODE* farmInfo = json_new(JSON_ARRAY);
-				std::string typeStr;
-				get_FARM_Type(&typeStr, dataItr->dataSetType);
-				json_set_name(farmInfo, typeStr.c_str());
-				parse_FARM_Logs(dataItr->location, dataItr->dataSize, dataItr->dataSetType, farmInfo);
-				json_push_back(masterJson, farmInfo);
-			}
-			else if (dataItr->dataSetType == FARM_WLDTR)
-			{
-				JSONNODE* farmInfo = json_new(JSON_ARRAY);
-				std::string typeStr;
-				get_FARM_Type(&typeStr, dataItr->dataSetType);
-				json_set_name(farmInfo, typeStr.c_str());
-				CFARMWLM* cWLM;
-				cWLM = new CFARMWLM(&bufferData[dataItr->location], dataItr->dataSize, farmInfo);
-				retStatus = cWLM->get_WLM_Status();
-				json_push_back(masterJson, farmInfo);
-				delete(cWLM);
-			}
-			else
-			{
-				JSONNODE* farmInfo = json_new(JSON_NODE);
-				std::string typeStr;
-				get_FARM_Type(&typeStr, dataItr->dataSetType);
-				json_set_name(farmInfo, typeStr.c_str());
-				parse_FARM_Logs(dataItr->location, dataItr->dataSize, dataItr->dataSetType, farmInfo);
-				json_push_back(masterJson, farmInfo);
-			}
-
-		}
-
+		return m_status = eReturnValues::BAD_PARAMETER;
 	}
-	return retStatus;
+	if (m_LogSize < COMBINED_HEADER_SIZE)
+	{
+		return m_status = eReturnValues::INVALID_LENGTH;
+	}
+	if (!m_isComboLog)
+	{
+		return m_status = eReturnValues::VALIDATION_FAILURE;
+	}
+	if (combined_LE(bufferData, 22, 2) != 1)
+	{
+		return m_status = eReturnValues::NOT_SUPPORTED;
+	}
+	const size_t headerSize = static_cast<size_t>(combined_LE(bufferData, 116, 2));
+	const uint16_t count = static_cast<uint16_t>(combined_LE(bufferData, 252, 2));
+	m_entrySize = static_cast<size_t>(combined_LE(bufferData, 254, 2));
+	if (headerSize < COMBINED_HEADER_SIZE || headerSize > m_LogSize ||
+		m_entrySize < COMBINED_ENTRY_SIZE || count == 0 ||
+		count > (headerSize - COMBINED_HEADER_SIZE) / m_entrySize)
+	{
+		return m_status = eReturnValues::INVALID_LENGTH;
+	}
+	const std::string interface = combined_String(bufferData, 24, 4);
+	if (interface != "SATA" && interface != "SAS")
+	{
+		return m_status = eReturnValues::NOT_SUPPORTED;
+	}
+	get_Data_Set(count);
+	for (size_t i = 0; i < vdataSetInfo.size(); ++i)
+	{
+		const sComboDataSet& dataSet = vdataSetInfo[i];
+		if (dataSet.location < headerSize || dataSet.location > m_LogSize ||
+			dataSet.dataSize == 0 || dataSet.dataSize > m_LogSize - dataSet.location)
+		{
+			return m_status = eReturnValues::INVALID_LENGTH;
+		}
+		for (size_t previous = 0; previous < i; ++previous)
+		{
+			const sComboDataSet& other = vdataSetInfo[previous];
+			if (dataSet.dataSetType == other.dataSetType ||
+				(static_cast<uint64_t>(dataSet.location) < static_cast<uint64_t>(other.location) + other.dataSize &&
+				 static_cast<uint64_t>(other.location) < static_cast<uint64_t>(dataSet.location) + dataSet.dataSize))
+			{
+				return m_status = eReturnValues::VALIDATION_FAILURE;
+			}
+		}
+	}
+	m_maxLogSize = vdataSetInfo.front().dataSize;
+	sStringIdentifyData headerInfo;
+	get_Header_Info(&headerInfo);
+	print_Combine_Log_Header(&headerInfo, masterJson);
+	print_Header_Debug(masterJson);
+
+	JSONNODE* directory = json_new(JSON_ARRAY);
+	json_set_name(directory, "FARM Combined Data Sets");
+	json_push_back(masterJson, directory);
+	eReturnValues result = eReturnValues::SUCCESS;
+	for (size_t i = 0; i < vdataSetInfo.size(); ++i)
+	{
+		const sComboDataSet& dataSet = vdataSetInfo[i];
+		const std::string tag = combined_String(bufferData, COMBINED_HEADER_SIZE + i * m_entrySize, 8);
+		std::string typeName;
+		get_FARM_Type(&typeName, dataSet.dataSetType);
+		JSONNODE* info = json_new(JSON_NODE);
+		json_push_back(info, json_new_a("Type", tag.c_str()));
+		set_json_64bit(info, "Offset", dataSet.location, false);
+		set_json_64bit(info, "Size", dataSet.dataSize, false);
+		set_json_64bit(info, "Start Time (ms since Unix epoch)", dataSet.startTime, false);
+		set_json_64bit(info, "End Time (ms since Unix epoch)", dataSet.endTime, false);
+		json_push_back(directory, info);
+
+		JSONNODE* data = json_new(is_Subpage_Neeeded(dataSet.dataSetType) ||
+			dataSet.dataSetType == FARM_WLDTR ? JSON_ARRAY : JSON_NODE);
+		json_set_name(data, typeName == "unknown" ? tag.c_str() : typeName.c_str());
+		json_push_back(masterJson, data);
+		eReturnValues status;
+		if (dataSet.dataSetType == FARM_WLDTR)
+		{
+			CFARMWLM wlm(bufferData + dataSet.location, dataSet.dataSize, data);
+			status = wlm.get_WLM_Status();
+		}
+		else if (typeName == "unknown")
+		{
+			json_push_back(data, json_new_a("Not Supported", "Unknown combined FARM dataset type"));
+			status = eReturnValues::NOT_SUPPORTED;
+		}
+		else
+		{
+			parse_FARM_Logs(dataSet.location, dataSet.dataSize, dataSet.dataSetType, data);
+			status = m_status;
+		}
+		json_push_back(info, json_new_a("Parsing Status", status == eReturnValues::SUCCESS ? "Success" :
+			(status == eReturnValues::NOT_SUPPORTED ? "Not supported" : "Failed")));
+		if (status != eReturnValues::SUCCESS &&
+			(result == eReturnValues::SUCCESS || result == eReturnValues::NOT_SUPPORTED))
+		{
+			result = status;
+		}
+	}
+	return m_status = result;
 }

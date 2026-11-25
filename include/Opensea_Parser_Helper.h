@@ -3,7 +3,7 @@
 //
 // Do NOT modify or remove this copyright and license
 //
-// Copyright (c) 2014 - 2023 Seagate Technology LLC and/or its Affiliates
+// Copyright (c) 2014 - 2026 Seagate Technology LLC and/or its Affiliates
 //
 // This software is subject to the terms of the Mozilla Public
 // License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -26,7 +26,9 @@
 
 #include <inttypes.h>
 #include <time.h>
-#include "common.h"
+#include "common_types.h"
+#include "bit_manip.h"
+#include "math_utils.h"
 #include "libjson.h"
 #include <limits.h>
 
@@ -36,10 +38,11 @@
 #include <cctype>
 #include <string>
 
-
 extern eVerbosityLevels g_verbosity;
 extern eDataFormat g_dataformat;
 extern bool	g_parseUnknown;
+extern bool g_parseNULL;
+extern bool g_convertHeaderToLowercase;
 extern time_t g_currentTime;
 extern char g_currentTimeString[64];
 extern char *g_currentTimeStringPtr;
@@ -51,6 +54,10 @@ namespace opensea_parser {
 #ifndef OPENSEA_PARSER
 #define OPENSEA_PARSER
 
+#define OFFSETZERO 0
+#define OFFSETONE 1
+#define OFFSETTWO 2
+#define OFFSETTHREE 3
 	// quick size for of the ints for case statements
 #define ONE_INT_SIZE 1
 #define TWO_INT_SIZE 2
@@ -91,78 +98,69 @@ namespace opensea_parser {
 
 #define COMMAND_DURATION_LIMITS_LOG 0x19
 
-	typedef enum _eParserInterfaceTypes
+	enum class eInterfaceTypes
 	{
-		PARSER_INTERFACE_UNKNOWN = 0,
-		PARSER_INTERFACE_TYPE_SCSI = 1,
-		PARSER_INTERFACE_TYPE_FC = 2,
-		PARSER_INTERFACE_TYPE_SAS = 4,
-		PARSER_INTERFACE_TYPE_SATA = 8,
-	}eInterfaceTypes;
+		INTERFACE_UNKNOWN = 0,
+		INTERFACE_TYPE_SCSI = 1,
+		INTERFACE_TYPE_FC = 2,
+		INTERFACE_TYPE_SAS = 4,
+		INTERFACE_TYPE_SATA = 8,
+	};
 
-    // output file types
-	typedef enum _eOpensea_print_Types
-    {
-        OPENSEA_LOG_PRINT_JSON,     // default
-        OPENSEA_LOG_PRINT_TEXT,
-        OPENSEA_LOG_PRINT_CSV,
-        OPENSEA_LOG_PRINT_FLAT_CSV,
-        OPENSEA_LOG_PRINT_PROM,
-        OPENSEA_LOG_PRINT_PYTHON_DICTIONARY,
-    }eOpensea_print_Types;
-
-	// SCSI Parameter Control Bytes
-	typedef enum _eOpenSea_SCSI_Log_Parameter_Types
+	enum class ePrintTypes
 	{
-		OPENSEA_SCSI_LOG_BOUNDED_DATA_COUNTER = 0,   // default
-		OPENSEA_SCSI_LOG_ASCII_FORMAT_LIST,
-		OPENSEA_SCSI_LOG_BOUNDED_DATA_COUNTER_OR_UNBOUNDED_DATA_COUNTER,
-		OPENSEA_SCSI_LOG_BINARY_FORMAT_LIST,
-	}eOpenSea_SCSI_Log_Parameter_Types;
+		LOG_PRINT_JSON,     // default
+		LOG_PRINT_TEXT,
+		LOG_PRINT_CSV,
+		LOG_PRINT_FLAT_CSV,
+		LOG_PRINT_PROM,
+		LOG_PRINT_TELEMETRY,
+		LOG_PRINT_PYTHON_DICTIONARY,
+		LOG_PRINT_IBT_CSV,
+		LOG_PRINT_FAILURE,
+		LOG_PRINT_TO_SCREEN,
+	};
 
-    typedef enum  _eSMARTFrameFlags
-    {
-        SMART_FRAME_FLAG_SAVED_AT_MSI_PERIOD = 0x00,
-        SMART_FRAME_FLAG_SAVED_DUE_TO_COLD_START = 0x01,
-        SMART_FRAME_FLAG_SAVED_DUE_TO_SCSI_REZERO_COMMAND = 0x02,
-        SMART_FRAME_FLAG_SAVED_DUE_TO_03_XX_ERROR = 0x03,
-        SMART_FRAME_FLAG_SAVED_DUE_TO_04_XX_ERROR = 0x04,
-        SMART_FRAME_FLAG_SAVED_DUE_TO_1_5D_ERROR_FOR_PREDICTIVE_FAILURE = 0x05,
-        SMART_FRAME_FLAG_SAVED_DUE_TO_FACTORY_COMMAND = 0x06,
-        SMART_FRAME_FLAG_SAVED_DUE_TO_SEND_DIAGNOSTIC_COMMAND_WITH_SELFTEST_BIT_SET = 0x07,
-        SMART_FRAME_FLAG_SAVED_DUE_TO_SCSI_0B_08_ERROR = 0x08,
-        SMART_FRAME_FLAG_SAVED_DUE_TO_SCSI_09_XX_ERROR = 0x09,
-        SMART_FRAME_FLAG_SAVED_DUE_TO_SCSI_REZERO_COMMAND_WITH_HARD_RESET = 0x0A,
-        SMART_FRAME_FLAG_SAVED_DUE_TO_0B_01_WARNING = 0x0B,
-        SMART_FRAME_FLAG_SAVED_DUE_TO_POWER_DOWN = 0x0C,
-        SMART_FRAME_FLAG_SAVED_DUE_TO_BEGINNING_OF_SCSI_FORMAT_OPERATION = 0x0D,
-        SMART_FRAME_FLAG_SAVED_DUE_TO_RESET_FLASH_LED_ERROR = 0x0E,
-        SMART_FRAME_FLAG_RESERVED = 0x0F,
-        SMART_FRAME_FLAG_SAVED_DUE_TO_SCSI_DOWNLOAD_COMMAND = 0x10,
-        SMART_FRAME_FLAG_SAVED_DUE_TO_SCSI_TRIP_ALGORITHM = 0x11,
-        SMART_FRAME_FLAG_SAVED_DUE_TO_NHT_HEALTH_TRIP = 0x12,
-        SMART_FRAME_FLAG_DUE_TO_ISSRA_WARNING = 0x13,
-        SMART_FRAME_FLAG_DUE_TO_FACTORY_COMMAND_SAVE = 0x14,
-        SMART_FRAME_FLAG_DUE_TO_EXIT_REMANUFACTURING = 0x15,
-        SMART_FRAME_FLAG_DUE_TO_HITACHI_ORM_OR_HD_TEST = 0x16,
-        SMART_FRAME_FLAG_STOP_UNIT_FRAME = 0x17,
-        SMART_FRAME_FLAG_INTERIM_FRAME_10MIN_IDLE_TIME = 0x18,
-        SMART_FRAME_FLAG_SAVED_DUE_TO_WRITE_PROTECT_INVOCATION = 0x19,
-        SMART_FRAME_FLAG_SAVED_DUE_TO_FACTORY_COMMAND_TO_INVOCATE_A_FRAME_THAT_CAN_BE_INTERRUPTABLE = 0x1A,
-        SMART_FRAME_FLAG_SAVED_DUE_TO_SMART_SCT_COMMAND = 0x1B,
-        SMART_FRAME_FLAG_SAVED_DUE_TO_HEAD_UNLOADING = 0x1C,
-        SMART_FRAME_FLAG_SAVED_DUE_TO_START_OF_SANITIZE_COMMAND = 0x1D,
-        SMART_FRAME_FLAG_SAVED_DUE_TO_END_OF_SANITIZE_COMMAND = 0x1E,
-        SMART_FRAME_FLAG_SAVED_DUE_TO_FORMAT_COMPLETION = 0x1F,
-        SMART_FRAME_FLAG_UNRECOVERED_WRITE_NVC_RESET_FRAME = 0x20,
-        SMART_FRAME_FLAG_QUICK_FORMAT_FINISH = 0x21,
-        SMART_FRAME_FLAG_SATA_DEVICE_FAULT = 0x22,
-        SMART_FRAME_FLAG_SATA_UNCORRECTABLE_ERROR = 0x23,
-        SMART_FRAME_FLAG_SATA_ERC_UNCORRETABLE_ERROR = 0x24,
-        SMART_FRAME_FLAG_DRIVE_SELF_TEST_COMPLETE_WITH_FAILURE = 0x25,
-        SMART_FRAME_FLAG_DEFECT_LIST_COMMAND = 0x26,
-        SMART_FRAME_FLAG_F7_CDB_TRIGGER = 0x27,
-    }eSMARTFrameFlags;
+	enum class eLogTypes
+	{
+		LOG_TYPE_UNKNOWN = 0,
+		LOG_TYPE_FARM,
+		LOG_TYPE_DEVICE_STATISTICS_LOG,
+		LOG_TYPE_EXT_COMPREHENSIVE_LOG,
+		LOG_TYPE_EXT_DST_LOG,
+		LOG_TYPE_IDENTIFY_LOG,
+		LOG_TYPE_IDENTIFY_DEVICE_DATA,
+		LOG_TYPE_SCT_TEMP_LOG,
+		LOG_TYPE_POWER_CONDITION_LOG,
+		LOG_TYPE_NCQ_CMD_ERROR_LOG,
+		LOG_TYPE_SCSI_LOG_PAGES,
+		LOG_TYPE_SMART_DIRECTORY,
+
+	};
+	enum class eLogPageNames: int
+	{
+		SUPPORTED_LOG_PAGES = 0x00,
+		WRITE_ERROR_COUNTER = 0x02,
+		READ_ERROR_COUNTER = 0x03,
+		VERIFY_ERROR_COUNTER = 0x05,
+		NON_MEDIUM_ERROR = 0x06,
+		FORMAT_STATUS = 0x08,
+		LOGICAL_BLOCK_PROVISIONING = 0x0C,
+		ENVIRONMENTAL = 0x0D,
+		START_STOP_CYCLE_COUNTER = 0x0E,
+		APPLICATION_CLIENT = 0x0F,
+		SELF_TEST_RESULTS = 0x10,
+		SOLID_STATE_MEDIA = 0x11,
+		ZONED_DEVICE_STATISTICS = 0x14,
+		BACKGROUND_SCAN = 0x15,
+		PROTOCOL_SPECIFIC_PORT = 0x18,
+		CACHE_MEMORY_STATISTICES = 0x19,
+		POWER_CONDITION_TRANSITIONS = 0x1A,
+		INFORMATIONAL_EXCEPTIONS = 0x2F,
+		CACHE_STATISTICS = 0x37,
+		SEAGATE_SPECIFIC_LOG = 0x3D,
+		FACTORY_LOG = 0x3E,
+	};
 
 #pragma pack(push, 1)
 	typedef struct _sLogPageStruct
@@ -170,14 +168,14 @@ namespace opensea_parser {
 		uint8_t			pageCode;							//<! page code for the log lpage format
 		uint8_t			subPage;							//<! subpage code for the log page format
 		uint16_t		pageLength;							//<! this is different from size, see SCSI SPC Spec. 
-		_sLogPageStruct() : pageCode(0), subPage(0), pageLength(0) {};
+		explicit _sLogPageStruct() : pageCode(0), subPage(0), pageLength(0) {};
         _sLogPageStruct(uint8_t* buffer)
         {
-            if (buffer != NULL)
+            if (buffer != M_NULLPTR)
             {
-                pageCode = buffer[0];
-                subPage = buffer[1];
-                pageLength = *(reinterpret_cast<uint16_t*>(&buffer[2]));
+                pageCode = buffer[OFFSETZERO];
+                subPage = buffer[OFFSETONE];
+                pageLength = *(reinterpret_cast<uint16_t*>(&buffer[OFFSETTWO]));
             }
             else
             {
@@ -197,39 +195,64 @@ namespace opensea_parser {
 	}sLogParams;
 
 #pragma pack(pop)
-	typedef enum _eLogPageNames
+
+	const eLogPageNames pageCodes[] = { eLogPageNames::SUPPORTED_LOG_PAGES,	eLogPageNames::WRITE_ERROR_COUNTER,
+		eLogPageNames::READ_ERROR_COUNTER ,eLogPageNames::VERIFY_ERROR_COUNTER, eLogPageNames::NON_MEDIUM_ERROR ,
+		eLogPageNames::FORMAT_STATUS ,	eLogPageNames::LOGICAL_BLOCK_PROVISIONING ,eLogPageNames::ENVIRONMENTAL,
+		eLogPageNames::START_STOP_CYCLE_COUNTER ,	eLogPageNames::APPLICATION_CLIENT,	eLogPageNames::SELF_TEST_RESULTS,
+		eLogPageNames::SOLID_STATE_MEDIA ,	eLogPageNames::ZONED_DEVICE_STATISTICS , eLogPageNames::BACKGROUND_SCAN , eLogPageNames::CACHE_MEMORY_STATISTICES,
+		eLogPageNames::PROTOCOL_SPECIFIC_PORT, eLogPageNames::POWER_CONDITION_TRANSITIONS , eLogPageNames::INFORMATIONAL_EXCEPTIONS,
+		eLogPageNames::CACHE_STATISTICS, eLogPageNames::SEAGATE_SPECIFIC_LOG, eLogPageNames::FACTORY_LOG,};
+
+	M_NODISCARD static M_INLINE int16_t b_swap_int16(int16_t value)
 	{
-		SUPPORTED_LOG_PAGES = 0x00,
-		WRITE_ERROR_COUNTER = 0x02,
-		READ_ERROR_COUNTER = 0x03,
-		VERIFY_ERROR_COUNTER = 0x05,
-		NON_MEDIUM_ERROR = 0x06,
-		FORMAT_STATUS = 0x08,
-		LOGICAL_BLOCK_PROVISIONING = 0x0C,
-		ENVIRONMENTAL = 0x0D,
-		START_STOP_CYCLE_COUNTER = 0x0E,
-		APPLICATION_CLIENT = 0x0F,
-		SELF_TEST_RESULTS = 0x10,
-		SOLID_STATE_MEDIA = 0x11,
-        ZONED_DEVICE_STATISTICS = 0x14,
-		BACKGROUND_SCAN = 0x15,
-		PROTOCOL_SPECIFIC_PORT = 0x18,
-		CACHE_MEMORY_STATISTICES = 0x19,
-		POWER_CONDITION_TRANSITIONS = 0x1A,
-		INFORMATIONAL_EXCEPTIONS = 0x2F,        
-		CACHE_STATISTICS = 0x37,
-		SEAGATE_SPECIFIC_LOG = 0x3D,
-		FACTORY_LOG = 0x3E,        
-	}eLogPageNames;
-
-	const int pageCodes[] = { SUPPORTED_LOG_PAGES,	WRITE_ERROR_COUNTER,
-		READ_ERROR_COUNTER ,VERIFY_ERROR_COUNTER, NON_MEDIUM_ERROR ,
-		FORMAT_STATUS ,	LOGICAL_BLOCK_PROVISIONING ,ENVIRONMENTAL,
-		START_STOP_CYCLE_COUNTER ,	APPLICATION_CLIENT,	SELF_TEST_RESULTS,
-		SOLID_STATE_MEDIA ,	ZONED_DEVICE_STATISTICS , BACKGROUND_SCAN , CACHE_MEMORY_STATISTICES,
-		PROTOCOL_SPECIFIC_PORT, POWER_CONDITION_TRANSITIONS , INFORMATIONAL_EXCEPTIONS,
-        CACHE_STATISTICS, SEAGATE_SPECIFIC_LOG, FACTORY_LOG,};
-
+#if defined(HAVE_BUILTIN_BSWAP)
+		return __builtin_bswap16(value);
+#elif defined(HAVE_WIN_BSWAP)
+		return _byteswap_ushort(value);
+#else
+		return (((value & INT16_C(0x00FF)) << 8) | ((value & INT16_C(0xFF00)) >> 8));
+#endif
+	}
+	//-----------------------------------------------------------------------------
+	//
+	//! \fn std_replace_spaces_with_underscore()
+	//
+	//! \brief
+	//!   Description:  Converts all spaces and replaces them with underscores
+	//
+	//  Entry:
+	//! \param myStr  = The string to be converted by replacing all the spaces with underscores
+	//
+	//  Exit:
+	//!   \return void
+	//
+	//---------------------------------------------------------------------------
+	inline void std_replace_spaces_with_underscore(std::string& myStr)
+	{
+		std::replace(myStr.begin(), myStr.end(), ' ', '_');
+	}
+	//-----------------------------------------------------------------------------
+	//
+	//! \fn std_string_to_lowercase()
+	//
+	//! \brief
+	//!   Description:  Converts all characters in a given string to lowercase.
+	//! This function takes a reference to a `std::string` and transforms all of its 
+	//! characters to lowercase using the `std::transform` algorithm and `std::tolower` function.
+	//
+	//  Entry:
+	//! \param stringToLowercase  = The string to be converted to lowercase. The conversion is done in place
+	//
+	//  Exit:
+	//!   \return void
+	//
+	//---------------------------------------------------------------------------
+	inline void std_string_to_lowercase(std::string& stringToLowercase)
+	{
+		std::transform(stringToLowercase.begin(), stringToLowercase.end(), stringToLowercase.begin(),
+			[](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+	}
 	//-----------------------------------------------------------------------------
 	//
 	//! \fn check_For_Active_Status()
@@ -244,7 +267,7 @@ namespace opensea_parser {
 	//!   \return bool - false or true
 	//
 	//---------------------------------------------------------------------------
-	inline bool check_For_Active_Status(uint64_t *value)
+	inline bool check_For_Active_Status(uint64_t *const value)
 	{
 		if ((*value & BIT63) == BIT63 && (*value & BIT62) == BIT62)
 		{
@@ -270,13 +293,20 @@ namespace opensea_parser {
 	{
 		if (check_For_Active_Status(&value))
 		{
-			value = value & UINT64_C(0x00FFFFFFFFFFFFFF);
+			if (M_Byte7(value) != UINT8_C(0xFF))
+			{
+				value = value & UINT64_C(0x00FFFFFFFFFFFFFF);
+			}
+			else
+			{
+				value = 0;
+			}
 		}
 		else
 		{
 			value = 0;
 		}
-		return value;
+		return static_cast<int64_t>(value);
 	}
 	//-----------------------------------------------------------------------------
 	//
@@ -308,6 +338,35 @@ namespace opensea_parser {
 	}
 	//-----------------------------------------------------------------------------
 	//
+	//! \fn set_json_string_With_Status()
+	//
+	//! \brief
+	//!   Description:  set the json values for a string and will show status bits if the flag is set
+	//
+	//  Entry:
+	//! \param  nowNode = the Json node that the data will be added to
+	//! \param  header = the string data what will be adding to
+	//! \param  strValue = value in a string format
+	//
+	//  Exit:
+	//!   \return void
+	//
+	//-----------------------------------------------------------------------------
+	inline void set_json_string_With_NO_Status(JSONNODE* nowNode, const std::string& header, const std::string& strValue)
+	{
+		if (header.size() != 0 && !strValue.empty())
+		{
+			std::string myStr = header;
+			if (g_convertHeaderToLowercase)
+			{
+				opensea_parser::std_replace_spaces_with_underscore(myStr);
+				opensea_parser::std_string_to_lowercase(myStr);
+			}
+			json_push_back(nowNode, json_new_a(myStr.c_str(), strValue.c_str()));
+		}
+	}
+	//-----------------------------------------------------------------------------
+	//
 	//! \fn set_json_64bit_With_Check_Status()
 	//
 	//! \brief
@@ -315,7 +374,7 @@ namespace opensea_parser {
 	//
 	//  Entry:
 	//! \param  nowNode = the Json node that the data will be added to
-	//! \param  myStr = the string data what will be adding to
+	//! \param  header = the string data what will be adding to
 	//! \param value  =  64 bit value to check to see if the bit is set or not
 	//! \param hexPrint =  if true then print the data in a hex format
 	//
@@ -323,27 +382,53 @@ namespace opensea_parser {
 	//!   \return void
 	//
 	//-----------------------------------------------------------------------------
-    inline void set_json_64bit_With_Check_Status(JSONNODE *nowNode, const std::string & myStr, uint64_t value, bool hexPrint)
+    inline void set_json_64bit_With_Check_Status(JSONNODE *nowNode,const std::string & header, uint64_t value, bool hexPrint)
     {
-		value = check_Status_Strip_Status(value);
+        if (!nowNode) return;  // check for NULL
+		std::string myStr = header;
+		int64_t statusValue = 0;
+		statusValue = check_Status_Strip_Status(value);
         std::ostringstream temp;
+		if (g_convertHeaderToLowercase)
+		{
+			opensea_parser::std_replace_spaces_with_underscore(myStr);
+			opensea_parser::std_string_to_lowercase(myStr);
+		}
         if (hexPrint)
         {
-            //json does not support 64 bit numbers. Therefore we will print it as a string
-            temp << "0x" << std::hex << std::uppercase << std::setfill('0') << std::setw(16) << value;
-            json_push_back(nowNode, json_new_a(myStr.c_str(), temp.str().c_str()));
+			if (g_parseNULL && check_For_Active_Status(reinterpret_cast<uint64_t*>(&value)) == false)
+			{
+				json_push_back(nowNode, json_new_a(myStr.c_str(), "NULL"));
+			}
+			else
+			{
+				//64 bit in hex is only 8 in width
+				temp << "0x" << std::hex << std::uppercase << std::setfill('0') << std::setw(8) << statusValue;
+				json_push_back(nowNode, json_new_a(myStr.c_str(), temp.str().c_str()));
+			}
         }
         else
         {
-            if (M_IGETBITRANGE(value, 63, 31) == 0)
+            if ((M_IGETBITRANGE(statusValue, 63, 59) == 0) && check_For_Active_Status(&value) == true)
             {
-                json_push_back(nowNode, json_new_i(myStr.c_str(), value));
+                json_push_back(nowNode, json_new_i(myStr.c_str(), static_cast<json_int_t>(statusValue)));
             }
+			else if ((M_IGETBITRANGE(statusValue, 63, 59) == 0) && check_Status_Strip_Status(value) == 0)
+			{
+				json_push_back(nowNode, json_new_i(myStr.c_str(), static_cast<json_int_t>(statusValue)));
+			}
             else
             {
-                // if the vale is greater then a unsigned 32 bit number print it as a string
-                temp << std::dec << value;
-                json_push_back(nowNode, json_new_a(myStr.c_str(), temp.str().c_str()));
+				if (g_parseNULL && check_For_Active_Status(&value) == false)
+				{
+					json_push_back(nowNode, json_new_a(myStr.c_str(), "NULL"));
+				}
+				else
+				{
+					// if the value is greater then a unsigned 56 bit number print it as a string
+					temp << std::dec << statusValue;
+					json_push_back(nowNode, json_new_a(myStr.c_str(), temp.str().c_str()));
+				}
             }
         }
 	}
@@ -356,7 +441,7 @@ namespace opensea_parser {
     //
     //  Entry:
     //! \param  nowNode = the Json node that the data will be added to
-    //! \param  myStr = the string data what will be adding to
+    //! \param  header = the string data what will be adding to
     //! \param value  =  64 bit value to check to see if the bit is set or not
     //! \param hexPrint =  if true then print the data in a hex format
     //
@@ -364,9 +449,16 @@ namespace opensea_parser {
     //!   \return void
     //
     //-----------------------------------------------------------------------------
-    inline void set_json_64bit(JSONNODE *nowNode, const std::string & myStr, uint64_t value, bool hexPrint)
+    inline void set_json_64bit(JSONNODE *nowNode, const std::string & header, uint64_t value, bool hexPrint)
     {
+		if (!nowNode) return;  // check for NULL
+		std::string myStr = header;
         std::ostringstream temp;
+		if (g_convertHeaderToLowercase)
+		{
+			opensea_parser::std_replace_spaces_with_underscore(myStr);
+			opensea_parser::std_string_to_lowercase(myStr);
+		}
         if (hexPrint)
         {
             //json does not support 64 bit numbers. Therefore we will print it as a string
@@ -375,13 +467,13 @@ namespace opensea_parser {
         }
         else
         {
-            if (M_IGETBITRANGE(value,63,32) == 0)
+            if (M_IGETBITRANGE(value,63,59) == 0)
             {
-                json_push_back(nowNode, json_new_i(myStr.c_str(), value));
+                json_push_back(nowNode, json_new_i(myStr.c_str(), static_cast<json_int_t>(value)));
             }
             else
             {
-                // if the vale is greater then a unsigned 32 bit number print it as a string
+                // if the vale is greater then a unsigned 59 bit number print it as a string
                 temp << std::dec << value;
                 json_push_back(nowNode, json_new_a(myStr.c_str(), temp.str().c_str()));
             }
@@ -396,20 +488,38 @@ namespace opensea_parser {
 	//
 	//  Entry:
 	//! \param  nowNode = the Json node that the data will be added to
-	//! \param  myStr = the string data what will be adding to
+	//! \param  header = the string data what will be adding to
 	//! \param workingValue  =  boolean value
 	//
 	//  Exit:
 	//!   \return void
 	//
 	//-----------------------------------------------------------------------------
-    inline void set_Json_Bool(JSONNODE *nowNode, const std::string & myStr, bool workingValue)
+    inline void set_Json_Bool(JSONNODE *nowNode, const std::string & header, bool workingValue)
     {
+		if (!nowNode) return;  // check for NULL
+		std::string myStr = header;
+		if (g_convertHeaderToLowercase)
+		{
+			std_replace_spaces_with_underscore(myStr);
+			std_string_to_lowercase(myStr);
+		}
         if (workingValue)
-            json_push_back(nowNode, json_new_b(myStr.c_str(), true));
+			json_push_back(nowNode, json_new_b(myStr.c_str(), true));
         else
             json_push_back(nowNode, json_new_b(myStr.c_str(), false));
     }
+	
+	inline void set_Json_name(JSONNODE* nowNode, const std::string& header)
+	{
+		std::string myStr = header;
+		if (g_convertHeaderToLowercase)
+		{
+			opensea_parser::std_replace_spaces_with_underscore(myStr);
+			opensea_parser::std_string_to_lowercase(myStr);
+		}
+		json_set_name(nowNode, myStr.c_str());
+	}
 	//-----------------------------------------------------------------------------
 	//
 	//! \fn count_Occurance()
@@ -458,7 +568,7 @@ namespace opensea_parser {
 		{
 			for (size_t i = 0; i < (sizeof(pageCodes) / sizeof(*pageCodes)); i++)
 			{
-				if (pageCodes[i] == code)
+				if (code == static_cast<uint8_t>(pageCodes[i]))
 				{
 					return true;
 				}
@@ -466,11 +576,7 @@ namespace opensea_parser {
 		}
 		return false;
 	}
-    void get_SMART_Save_Flages(JSONNODE *headerNode, uint8_t flag);
-	void get_SMART_Save_Flages_String(std::string &reason, uint8_t flag);
-	void prePython_unknown_params(JSONNODE* masterData, uint64_t value, uint16_t logPage, uint8_t subPage, uint16_t paramCode, uint32_t offset);
-	void prePython_int(JSONNODE* masterData, const char* name, const char* statType, const char* unit, uint64_t value, uint16_t logPage, uint8_t subPage, uint16_t paramCode, uint32_t offset);
-	void prePython_float(JSONNODE* masterData, const char* name, const char* statType, const char* unit, double value, uint16_t logPage, uint8_t subPage, uint16_t paramCode, uint32_t offset);
+
 
     inline void byte_swap_std_string(std::string &stringToSwap)
     {
@@ -491,28 +597,18 @@ namespace opensea_parser {
 		if(lastChar != std::string::npos)
 			stringToTrim.erase(lastChar, stringToTrim.size() - lastChar);
     }
-
-    inline void std_string_to_lowercase(std::string &stringToLowercase)
-    {
-		for(size_t iter = 0; iter < stringToLowercase.size(); ++iter)
-		{
-			stringToLowercase.at(iter) = static_cast<char>(std::tolower(stringToLowercase.at(iter)));
-		}
-		//Below is c++11:
-        // std::transform(stringToLowercase.begin(), stringToLowercase.end(), stringToLowercase.begin(),
-        //     [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-    }
+	
 	inline eReturnValues fill_Log_Params(sLogParams &myStruct, uint8_t *buffer )
 	{
 
-		myStruct.paramCode = M_BytesTo2ByteValue(buffer[0],buffer[1]);
-		myStruct.paramControlByte = buffer[2];
-		myStruct.paramLength = buffer[3];
-		return SUCCESS;
+		myStruct.paramCode = M_BytesTo2ByteValue(buffer[OFFSETZERO],buffer[OFFSETONE]);
+		myStruct.paramControlByte = buffer[OFFSETTWO];
+		myStruct.paramLength = buffer[OFFSETTHREE];
+		return eReturnValues::SUCCESS;
 
 	}
 
-	inline double remove_Double_Transfer_Digits(double* decimalValue)
+	inline double remove_Double_Transfer_Digits(double* const decimalValue)
 	{
 		double newValue = 0.0;
 		std::ostringstream temp;

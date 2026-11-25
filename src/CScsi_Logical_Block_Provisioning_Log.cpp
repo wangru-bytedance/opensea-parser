@@ -2,7 +2,7 @@
 // CScsi_Logical_Block_Provisioning_Logg.cpp  Definition of Logical Block Provisioning Log page
 // Do NOT modify or remove this copyright and license
 //
-// Copyright (c) 2014 - 2023 Seagate Technology LLC and/or its Affiliates
+// Copyright (c) 2014 - 2026 Seagate Technology LLC and/or its Affiliates
 //
 // This software is subject to the terms of the Mozilla Public
 // License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -31,14 +31,14 @@ using namespace opensea_parser;
 //
 //---------------------------------------------------------------------------
 CScsiLBAProvisionLog::CScsiLBAProvisionLog()
-    : pData()
+    : v_Buff()
     , m_LBAName("Logical Block Provisioning Log")
-    , m_LBAStatus(IN_PROGRESS)
+    , m_LBAStatus(eReturnValues::IN_PROGRESS)
     , m_PageLength(0)
     , m_bufferLength()
     , m_Provision()
 {
-    if (VERBOSITY_COMMAND_VERBOSE <= g_verbosity)
+    if (eVerbosityLevels::VERBOSITY_COMMAND_VERBOSE <= g_verbosity)
     {
         printf("%s \n", m_LBAName.c_str());
     }
@@ -59,24 +59,33 @@ CScsiLBAProvisionLog::CScsiLBAProvisionLog()
 //
 //---------------------------------------------------------------------------
 CScsiLBAProvisionLog::CScsiLBAProvisionLog(uint8_t * buffer, size_t bufferSize, uint16_t pageLength)
-    : pData(buffer)
+    : v_Buff()
     , m_LBAName("Logical Block Provisioning Log")
-    , m_LBAStatus(IN_PROGRESS)
+    , m_LBAStatus(eReturnValues::IN_PROGRESS)
     , m_PageLength(pageLength)
     , m_bufferLength(bufferSize)
     , m_Provision()
 {
-    if (VERBOSITY_COMMAND_VERBOSE <= g_verbosity)
+    if (eVerbosityLevels::VERBOSITY_COMMAND_VERBOSE <= g_verbosity)
     {
         printf("%s \n", m_LBAName.c_str());
     }
-    if (buffer != NULL)
+    if (buffer != M_NULLPTR)
     {
-        m_LBAStatus = IN_PROGRESS;
+        v_Buff.resize(m_PageLength);  // Resize vector before copying!
+        safe_memmove(v_Buff.data(), pageLength, buffer, pageLength);
     }
     else
     {
-        m_LBAStatus = FAILURE;
+        m_LBAStatus = eReturnValues::FAILURE;
+    }
+    if (v_Buff.size() != 0)                           // if the buffer is null then exit something did not go right
+    {
+        m_LBAStatus = eReturnValues::IN_PROGRESS;
+    }
+    else
+    {
+        m_LBAStatus = eReturnValues::FAILURE;
     }
 
 }
@@ -242,8 +251,8 @@ void CScsiLBAProvisionLog::process_LBA_Provision_Data(JSONNODE *lbaData)
 //---------------------------------------------------------------------------
 eReturnValues CScsiLBAProvisionLog::get_LBA_Data(JSONNODE *masterData)
 {
-    eReturnValues retStatus = IN_PROGRESS;
-    if (pData != NULL)
+    eReturnValues retStatus = eReturnValues::IN_PROGRESS;
+    if (v_Buff.size() != 0)
     {
         JSONNODE *pageInfo = json_new(JSON_NODE);
         json_set_name(pageInfo, "Logical Block Provisioning Log - 0Ch");
@@ -252,24 +261,24 @@ eReturnValues CScsiLBAProvisionLog::get_LBA_Data(JSONNODE *masterData)
         {
             if (offset < m_bufferLength && offset < UINT16_MAX)
             {
-                m_Provision = reinterpret_cast<sLBA *>(&pData[offset]);
+                m_Provision = reinterpret_cast<sLBA *>(&v_Buff.at(offset));
                 process_LBA_Provision_Data(pageInfo);
                 offset += sizeof(sLBA);
             }
             else
             {
                 json_push_back(masterData, pageInfo);
-                return BAD_PARAMETER;
+                return eReturnValues::BAD_PARAMETER;
             }
 
         }
 
         json_push_back(masterData, pageInfo);
-        retStatus = SUCCESS;
+        retStatus = eReturnValues::SUCCESS;
     }
     else
     {
-        retStatus = MEMORY_FAILURE;
+        retStatus = eReturnValues::MEMORY_FAILURE;
     }
     return retStatus;
 }

@@ -2,7 +2,7 @@
 // CAta_NCQ_Command_Error_Log.cpp
 // Do NOT modify or remove this copyright and license
 //
-// Copyright (c) 2014 - 2023 Seagate Technology LLC and/or its Affiliates
+// Copyright (c) 2014 - 2026 Seagate Technology LLC and/or its Affiliates
 //
 // This software is subject to the terms of the Mozilla Public
 // License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -29,7 +29,7 @@ using namespace opensea_parser;
 //---------------------------------------------------------------------------
 CAta_NCQ_Command_Error_Log::CAta_NCQ_Command_Error_Log()
     : m_name("ATA NCQ Command Error Log")
-    , m_status(IN_PROGRESS)
+    , m_status(eReturnValues::IN_PROGRESS)
 {
 
 }
@@ -47,39 +47,44 @@ CAta_NCQ_Command_Error_Log::CAta_NCQ_Command_Error_Log()
 //
 //---------------------------------------------------------------------------
 CAta_NCQ_Command_Error_Log::CAta_NCQ_Command_Error_Log(const std::string & fileName)
-    :  m_name("ATA NCQ Command Error Log")
-    , m_status(IN_PROGRESS)
+    : m_name("ATA NCQ Command Error Log")
+    , m_status(eReturnValues::IN_PROGRESS)
 {
 	CLog *cCLog;
-	cCLog = new CLog(fileName);
-	if (cCLog->get_Log_Status() == SUCCESS)
+	cCLog = new CLog(fileName,true);
+	if (cCLog->get_Log_Status() == eReturnValues::SUCCESS)
 	{
-		if (cCLog->get_Buffer() != NULL)
-		{
+        std::vector<uint8_t> v_Buff;
+        cCLog->get_vBuffer(v_Buff);
+        if (v_Buff.size() != 0)                           // if the buffer is null then exit something did not go right
+        {
 			size_t logSize = cCLog->get_Size();
-			pBuf = new uint8_t[logSize];								// new a buffer to the point				
-#ifndef __STDC_SECURE_LIB__
-			memcpy(pBuf, cCLog->get_Buffer(), logSize);
-#else
-			memcpy_s(pBuf, logSize, cCLog->get_Buffer(), logSize);// copy the buffer data to the class member pBuf
-#endif
+
 			sLogPageStruct *idCheck;
-			idCheck = reinterpret_cast<sLogPageStruct*>(&pBuf[0]);
+			idCheck = reinterpret_cast<sLogPageStruct*>(&v_Buff.at(0));
 			byte_Swap_16(&idCheck->pageLength);
 			if (IsScsiLogPage(idCheck->pageLength, idCheck->pageCode) == false)
 			{
 				byte_Swap_16(&idCheck->pageLength);  // now that we know it's not scsi we need to flip the bytes back
-				m_status = IN_PROGRESS;
+                sNCQError* pNCQError;
+                for (size_t offset = 0; offset <= logSize;)
+                {
+                    pNCQError = reinterpret_cast<sNCQError*>(&v_Buff.at(offset));
+                    vNCQFrame.push_back(*pNCQError);
+                    offset += sizeof(sNCQError);
+                    pNCQError = M_NULLPTR;
+                }
+				m_status = eReturnValues::IN_PROGRESS;
 			}
 			else
 			{
-				m_status = BAD_PARAMETER;
+				m_status = eReturnValues::BAD_PARAMETER;
 			}
 		}
 		else
 		{
 
-			m_status = FAILURE;
+			m_status = eReturnValues::FAILURE;
 		}
 	}
 	else
@@ -101,19 +106,26 @@ CAta_NCQ_Command_Error_Log::CAta_NCQ_Command_Error_Log(const std::string & fileN
 //!   \return 
 //
 //---------------------------------------------------------------------------
-CAta_NCQ_Command_Error_Log::CAta_NCQ_Command_Error_Log(uint8_t *buffer)
+CAta_NCQ_Command_Error_Log::CAta_NCQ_Command_Error_Log(uint8_t *buffer, size_t length)
     : m_name("ATA NCQ Command Error Log")
-    , m_status(IN_PROGRESS)
-{
-    pBuf = buffer;
-    if (pBuf != NULL)
+    , m_status(eReturnValues::IN_PROGRESS)
+{	
+    
+    if (buffer != M_NULLPTR)
     {
-
-        m_status = IN_PROGRESS;
+        sNCQError* pNCQError;
+        for (size_t offset = 0; (offset + sizeof(sNCQError)) <= length;)
+        {
+            pNCQError = reinterpret_cast<sNCQError*>(&buffer[offset]);
+            vNCQFrame.push_back(*pNCQError);
+            offset += sizeof(sNCQError);
+            pNCQError = M_NULLPTR;
+        }
+        m_status = eReturnValues::IN_PROGRESS;
     }
     else
     {
-        m_status = FAILURE;
+        m_status = eReturnValues::FAILURE;
     }
 }
 //-----------------------------------------------------------------------------
@@ -121,7 +133,7 @@ CAta_NCQ_Command_Error_Log::CAta_NCQ_Command_Error_Log(uint8_t *buffer)
 //! \fn ~CAta_NCQ_Command_Error_Log()
 //
 //! \brief
-//!   Description: Class deconstructor 
+//!   Description: Class destructor 
 //
 //  Entry:
 //
@@ -131,10 +143,7 @@ CAta_NCQ_Command_Error_Log::CAta_NCQ_Command_Error_Log(uint8_t *buffer)
 //---------------------------------------------------------------------------
 CAta_NCQ_Command_Error_Log::~CAta_NCQ_Command_Error_Log()
 {
-    if (pBuf != NULL)
-    {
-        delete [] pBuf;
-    }
+
 }
 //-----------------------------------------------------------------------------
 //
@@ -150,11 +159,11 @@ CAta_NCQ_Command_Error_Log::~CAta_NCQ_Command_Error_Log()
 //!   \return bool
 //
 //---------------------------------------------------------------------------
-bool CAta_NCQ_Command_Error_Log::get_Bit_Name_Info(JSONNODE *NCQInfo)
+bool CAta_NCQ_Command_Error_Log::get_Bit_Name_Info(JSONNODE *NCQInfo , sNCQError *ncqError)
 {
     bool validNCQ = true;
     bool idleCmd = false;
-    uint8_t ncqTag = M_GETBITRANGE(ncqError->NCQbit, 4, 0);
+    uint8_t ncqTag = get_bit_range_uint8(ncqError->NCQbit, 4, 0);
     if (ncqError->NCQbit & BIT7)  // if bit7 is set then it is NOT valid ncq command
     {
         validNCQ = false;
@@ -183,13 +192,14 @@ bool CAta_NCQ_Command_Error_Log::get_Bit_Name_Info(JSONNODE *NCQInfo)
 //  Entry:
 //
 //  Exit:
-//!   \return bool
+//!   \return uint64_t
 //
 //---------------------------------------------------------------------------
-bool CAta_NCQ_Command_Error_Log::create_LBA()
+uint64_t CAta_NCQ_Command_Error_Log::create_LBA(sNCQError* ncqError)
 {
-    m_LBA = M_BytesTo8ByteValue(0, 0, ncqError->lba6, ncqError->lba5, ncqError->lba4, ncqError->lba3, ncqError->lba2, ncqError->lba1);
-    return true;
+    uint64_t lba = 0;
+    lba = M_BytesTo8ByteValue(0, 0, ncqError->lba6, ncqError->lba5, ncqError->lba4, ncqError->lba3, ncqError->lba2, ncqError->lba1);
+    return lba;
 }
 //-----------------------------------------------------------------------------
 //
@@ -207,22 +217,33 @@ bool CAta_NCQ_Command_Error_Log::create_LBA()
 //---------------------------------------------------------------------------
 eReturnValues CAta_NCQ_Command_Error_Log::get_NCQ_Command_Error_Log(JSONNODE *masterData)
 {
-    JSONNODE *NCQInfo = json_new(JSON_NODE);
+    JSONNODE *NCQInfo = json_new(JSON_ARRAY);
     json_set_name(NCQInfo, "NCQ Command Error Log");
-    ncqError = reinterpret_cast<sNCQError*>(&pBuf[0]);
-    get_Bit_Name_Info(NCQInfo);
-    create_LBA();
-    json_push_back(NCQInfo, json_new_i("Status", static_cast<uint32_t>(ncqError->status)));
-    json_push_back(NCQInfo, json_new_i("Error", static_cast<uint32_t>(ncqError->error)));
-    json_push_back(NCQInfo, json_new_i("Device", static_cast<uint32_t>(ncqError->device)));
-    json_push_back(NCQInfo, json_new_i("Count", static_cast<uint32_t>(ncqError->count)));
-    opensea_parser::set_json_64bit(NCQInfo, "LBA", m_LBA, false);
-    json_push_back(NCQInfo, json_new_i("Sense Key", static_cast<uint32_t>(ncqError->senseKey)));
-    json_push_back(NCQInfo, json_new_i("Sense Code Field", static_cast<uint32_t>(ncqError->senseCodeField)));
-    json_push_back(NCQInfo, json_new_i("Sense code Qualifeir", static_cast<uint32_t>(ncqError->senseCodeQualifier)));
-    opensea_parser::set_json_64bit(NCQInfo, "Final LBA in Error", ncqError->finalLBA, false);
-
+    
+    if (vNCQFrame.size() != 0)
+    {
+        for (uint32_t index = 0; index < vNCQFrame.size(); ++index)
+        {
+            JSONNODE* tier1Info = json_new(JSON_NODE);
+            json_set_name(tier1Info, "Error Log");
+            get_Bit_Name_Info(tier1Info, &vNCQFrame.at(index));
+            json_push_back(tier1Info, json_new_i("Status", static_cast<uint32_t>(vNCQFrame.at(index).status)));
+            json_push_back(tier1Info, json_new_i("Error", static_cast<uint32_t>(vNCQFrame.at(index).error)));
+            json_push_back(tier1Info, json_new_i("Device", static_cast<uint32_t>(vNCQFrame.at(index).device)));
+            json_push_back(tier1Info, json_new_i("Count", static_cast<uint32_t>(vNCQFrame.at(index).count)));
+            opensea_parser::set_json_64bit(tier1Info, "LBA", create_LBA(&vNCQFrame.at(index)), false);
+            json_push_back(tier1Info, json_new_i("Sense Key", static_cast<uint32_t>(vNCQFrame.at(index).senseKey)));
+            json_push_back(tier1Info, json_new_i("Sense Code Field", static_cast<uint32_t>(vNCQFrame.at(index).senseCodeField)));
+            json_push_back(tier1Info, json_new_i("Sense code Qualifier", static_cast<uint32_t>(vNCQFrame.at(index).senseCodeQualifier)));
+            opensea_parser::set_json_64bit(tier1Info, "Final LBA in Error", vNCQFrame.at(index).finalLBA, false);
+            json_push_back(NCQInfo, tier1Info);
+        }
+    }
+    else
+    {
+        json_push_back(NCQInfo, json_new_a("Empty NCQ Command Error Log", "data has not yet been gathered"));
+    }
     json_push_back(masterData, NCQInfo);
-    m_status = SUCCESS;
+    m_status = eReturnValues::SUCCESS;
     return m_status;
 }
